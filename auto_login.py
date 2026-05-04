@@ -6,7 +6,7 @@ from seleniumbase import SB
 import ddddocr
 
 # ==========================================
-# 1. 网站配置区域 (新增了签到相关的选择器)
+# 1. 网站配置区域 (新增了云服务器续费的各个按钮定位器)
 # ==========================================
 CONFIG = {
     "target_url": "https://nat.freecloud.ltd/login",
@@ -16,12 +16,23 @@ CONFIG = {
     "captcha_input_selector": "#captcha_allow_login_email_captcha", 
     "login_btn_selector": 'button[type="submit"]',
     
-    # 🌟 新增：签到页面的元素定位器
-    "sign_in_menu_selector": 'a[href*="_plugin=19"]',                # 左侧菜单的“签到中心”链接
-    "sign_in_btn_selector": 'button[onclick="showMathVerification()"]', # “我要签到”按钮
-    "math_question_selector": '#mathQuestion',                       # 算术题文本标签
-    "math_input_selector": '#userAnswer',                            # 答案输入框
-    "verify_btn_selector": 'button[onclick="checkAnswer()"]'         # “验证答案”按钮
+    # 签到页面的元素定位器
+    "sign_in_menu_selector": 'a[href*="_plugin=19"]',                
+    "sign_in_btn_selector": 'button[onclick="showMathVerification()"]', 
+    "math_question_selector": '#mathQuestion',                       
+    "math_input_selector": '#userAnswer',                            
+    "verify_btn_selector": 'button[onclick="checkAnswer()"]',        
+    "popup_content_selector": ".layui-layer-content", 
+    "popup_confirm_btn_selector": ".layui-layer-btn0", 
+    "points_balance_selector": "div.alert-success span",
+    
+    # 🌟 新增：云服务器续费流程的元素定位器
+    "server_menu_selector": 'a[href*="service?groupid=305"]', # 左侧菜单的“云服务器”
+    "server_checkbox_selector": '.row-checkbox',              # 服务器列表的勾选框
+    "list_renew_btn_selector": '#readBtn',                    # 列表底部的“续费”按钮
+    "confirm_renew_btn_selector": 'button.xfSubmit',          # 跳转后的“立即续费”按钮
+    "order_pay_btn_selector": '#payamount',                   # 订单页的“立即支付”按钮
+    "modal_pay_btn_selector": 'button.pay-now'                # 弹窗里的最终“立即支付”按钮
 }
 
 # 提前创建一个文件夹，用来专门存放截图
@@ -139,7 +150,7 @@ def handle_turnstile_verification(sb) -> bool:
     return verified
 
 # ==========================================
-# 3. 单个账号的处理流程（包含登录 + 签到逻辑）
+# 3. 单个账号的处理流程（登录 -> 签到 -> 续费）
 # ==========================================
 def process_single_account(username, password):
     print(f"\n==========================================")
@@ -207,67 +218,115 @@ def process_single_account(username, password):
             time.sleep(5)
             print(f"📄 登录成功，当前页面: {sb.get_title()}")
             take_screenshot(sb, "4_登录后的结果页面", username)
-            # --- 登录模块结束 ---
 
 
             # ==========================================
-            # 🌟 新增模块：每日签到与算术题处理
+            # 🌟 每日签到模块
             # ==========================================
             print("\n>>> 🎁 准备执行每日签到任务...")
-            
-            # 1. 点击进入签到中心
-            print("    ▶ 正在进入签到中心...")
             sb.click(CONFIG['sign_in_menu_selector'])
-            time.sleep(3) # 等待页面跳转加载
-            take_screenshot(sb, "5_进入签到中心", username)
-
-            # 设定最多重试 5 次，防止遇到死循环
+            time.sleep(3) 
+            
             max_retries = 5
             for attempt in range(max_retries):
-                print(f"    ▶ 点击【我要签到】 (尝试 {attempt + 1}/{max_retries})...")
                 sb.click(CONFIG['sign_in_btn_selector'])
-                time.sleep(2) # 等待弹窗和题目显示
+                time.sleep(2) 
                 
-                # 2. 从网页上抓取题目文本，例如 "请计算：10 * 3"
                 question_text = sb.get_text(CONFIG['math_question_selector'])
-                print(f"    ❓ 提取到题目: {question_text}")
-                
-                # 3. 剥离中文，留下纯数字和符号："请计算：10 * 3" -> "10 * 3"
                 math_expr = question_text.replace("请计算：", "").replace("=", "").strip()
-                
-                # 4. 让 Python 帮我们算出结果。eval() 是一个很强大的内置函数，能直接执行字符串里的数学运算
                 result = eval(math_expr)
                 
-                # 5. 核心逻辑：判断是不是“除不尽”的小数
-                #    isinstance(result, float) 是看结果带不带小数点
-                #    not result.is_integer() 是看小数位是不是 0。例如 5.0 是整数，但 3.33 就不是。
                 if isinstance(result, float) and not result.is_integer():
                     print(f"    ⚠️ 遇到除不尽的题目 ({math_expr} = {result})，准备刷新...")
-                    sb.refresh() # 刷新网页，重新再来一次循环
+                    sb.refresh() 
                     time.sleep(3)
-                    continue     # 跳过下面的代码，直接进入下一次 attempt 循环
+                    continue     
                 
-                # 6. 如果代码走到这里，说明是完美的整数，准备提交！
                 final_answer = int(result) 
-                print(f"    ✅ 计算结果为完美整数: {final_answer}，正在提交...")
-                
+                print(f"    ✅ 计算结果为整数: {final_answer}，正在提交...")
                 sb.type(CONFIG['math_input_selector'], str(final_answer))
-                take_screenshot(sb, f"6_填写签到算术题_尝试{attempt+1}", username)
                 
-                # 点击验证并提交答案
                 sb.click(CONFIG['verify_btn_selector'])
-                time.sleep(4) 
                 
-                take_screenshot(sb, "7_签到完成结果", username)
+                sb.wait_for_element(CONFIG['popup_content_selector'], timeout=5)
+                popup_msg = sb.get_text(CONFIG['popup_content_selector'])
+                print(f"    🔔 签到系统提示: 【{popup_msg}】")
+                
+                sb.click(CONFIG['popup_confirm_btn_selector'])
+                time.sleep(2) 
+                
+                try:
+                    balance_text = sb.get_text(CONFIG['points_balance_selector'])
+                    print(f"    💰 当前账户: {balance_text}")
+                except Exception:
+                    pass
+
                 print("    🎉 签到操作执行完毕！\n")
-                break # 签到成功了，跳出循环！
-                
+                break 
             else:
-                # 如果 5 次循环跑完了都没 `break`，说明运气太差全是除不尽的
                 print("    ❌ 签到失败：连续 5 次刷新都没有遇到可以整除的算术题。")
 
+            # ==========================================
+            # 🌟 云服务器自动续费模块
+            # ==========================================
+            print("\n>>> 💻 准备执行云服务器自动续费任务...")
+            
+            # 1. 点击左侧菜单，进入“云服务器”页面
+            print("    ▶ 正在进入云服务器列表...")
+            sb.click(CONFIG['server_menu_selector'])
+            time.sleep(3)
+            take_screenshot(sb, "8_云服务器列表页", username)
+            
+            # 检查页面上到底有没有服务器可以勾选（防止这是个没有服务器的新号报错）
+            if sb.is_element_present(CONFIG['server_checkbox_selector']):
+                
+                # 2. 勾选第一台服务器
+                sb.click(CONFIG['server_checkbox_selector'])
+                print("    ▶ 已勾选目标云服务器。")
+                
+                # 3. 点击列表下方的“续费”按钮
+                sb.click(CONFIG['list_renew_btn_selector'])
+                time.sleep(3) # 等待页面跳转到续费确认页
+                take_screenshot(sb, "9_续费确认页面", username)
+                
+                # 4. 点击“立即续费”按钮
+                print("    ▶ 正在生成续费订单...")
+                sb.click(CONFIG['confirm_renew_btn_selector'])
+                time.sleep(3) # 等待页面跳转到收银台支付页
+                take_screenshot(sb, "10_收银台支付页面", username)
+                
+                # 5. 点击收银台的“立即支付”（此时会弹出一个支付方式确认弹窗）
+                print("    ▶ 已调起支付面板，等待确认...")
+                sb.click(CONFIG['order_pay_btn_selector'])
+                
+                # 等待弹窗加载出来（最多等5秒），然后点击弹窗里的最后一次“立即支付”
+                sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=5)
+                take_screenshot(sb, "11_积分支付弹窗确认", username)
+                sb.click(CONFIG['modal_pay_btn_selector'])
+                print("    ▶ 💸 已在弹窗中确认支付，正在等待系统处理并跳转...")
+                
+                # 6. 等待网站处理订单并自动跳转回服务器详情页
+                # 网页里有 setInterval 一直在轮询订单状态，处理完会自动 location.href 跳转，所以我们多等一会儿
+                time.sleep(8) 
+                take_screenshot(sb, "12_支付完成跳转详情页", username)
+                
+                # 7. 在详情页中寻找包含“到期时间”的那行字，抓取出来让你放心
+                try:
+                    # 抓取页面里所有 <section class="text-gray"> 下面的 <p> 标签
+                    p_elements = sb.find_elements('section.text-gray p')
+                    for p in p_elements:
+                        if "到期时间" in p.text:
+                            print(f"    📅 续费大成功！最新 {p.text}")
+                            break
+                except Exception as e:
+                    print("    ⚠️ 未能抓取到最新的到期时间，但流程已正常走完。可以看截图确认。")
+                    
+            else:
+                print("    ⚠️ 当前账号下未检测到云服务器，跳过续费流程。")
+
+
         except Exception as e:
-            print(f"    ❌ 账号处理或签到过程中出现错误(可能今天已签到过): {e}")
+            print(f"    ❌ 账号处理或执行过程中出现错误: {e}")
             take_screenshot(sb, "Error_程序崩溃截图", username)
 
 # ==========================================
