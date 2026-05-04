@@ -2,7 +2,6 @@ name: 多账号自动登录续期任务
 
 on:
   schedule:
-    # 每天 UTC 时间 00:00 运行（对应北京时间早上 8:00）
     - cron: '0 0 * * *'
   workflow_dispatch:
 
@@ -19,14 +18,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 安装依赖包 (直接通过命令行安装)
-        # 【重点看这里】不需要 requirements.txt，直接在这里列出需要的包
+      - name: 安装依赖包
         run: |
           pip install seleniumbase ddddocr
           
       - name: 运行自动化脚本
         env:
-          # 将 GitHub Secrets 中配置的账号密码注入到 Python 环境变量中
           acount: ${{ secrets.ACOUNT }}
-        # 加上 -u 参数确保日志实时无缓冲输出
         run: python -u auto_login.py
+
+      - name: 上传运行过程截图 (Artifacts)
+        uses: actions/upload-artifact@v4
+        if: always() # 无论成功还是失败，都强行上传截图文件夹，方便排错
+        with:
+          name: Auto-Login-Screenshots
+          path: screenshots/
+          retention-days: 7 # 截图文件在 GitHub 服务器上保留 7 天
