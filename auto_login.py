@@ -57,6 +57,7 @@ def bypass_cloudflare_interstitial(sb, max_attempts=3) -> bool:
     for attempt in range(max_attempts):
         print(f"      ▶ 尝试绕过 ({attempt+1}/{max_attempts})...")
         try:
+            # 这个函数依赖 PyAutoGUI 进行物理鼠标点击，必须在非无头模式（headless=False）下运行
             sb.uc_gui_click_captcha()
             time.sleep(6)
             if not is_cloudflare_interstitial(sb):
@@ -145,15 +146,14 @@ def handle_turnstile_verification(sb) -> bool:
     return True
 
 # ==========================================
-# 3. 单个账号的处理流程（动态代理配置）
+# 3. 单个账号的处理流程（动态代理 + 虚拟屏幕适配）
 # ==========================================
 def process_single_account(username, password):
     print(f"\n==========================================")
     print(f"➡️ 开始处理账号: {username}")
     print(f"==========================================")
     
-    # 🌟 动态代理读取：尝试从系统环境变量中获取代理地址
-    # 当在 GitHub Actions 运行时，这里会读取到工作流注入的 "socks5://127.0.0.1:10808"
+    # 动态代理读取：尝试从系统环境变量中获取代理地址
     env_proxy = os.environ.get("HTTP_PROXY")
     
     if env_proxy:
@@ -166,7 +166,10 @@ def process_single_account(username, password):
         uc=True,            # 开启反检测模式，伪装成真实用户
         test=True,          # 隐藏多余日志
         locale="en",        # 设置浏览器语言为英文
-        headless=True,      # 开启无头模式（不显示浏览器界面，适合在服务器后台运行）
+        
+        # 🌟 修复报错的关键：必须为 False。配合 GitHub 的 Xvfb 虚拟屏幕，让 PyAutoGUI 能找到鼠标
+        headless=False,      
+        
         proxy=env_proxy,    # 将获取到的代理地址传递给浏览器
         chromium_arg="--disable-blink-features=AutomationControlled,--window-size=1920,1080"
     ) as sb:
@@ -204,12 +207,11 @@ def process_single_account(username, password):
             # 判断获取到的网页元素数据是否包含 base64 格式的图片
             if "base64," in img_src:
                 base64_data = img_src.split(',')[1]
-                # 将文本格式的 base64 数据解码成计算机能读懂的图片字节流
+                # 将文本格式的 base64 数据解码成图片字节流
                 img_bytes = base64.b64decode(base64_data)
                 
-                # 初始化 ddddocr 识别库（关闭烦人的广告输出）
+                # 初始化 ddddocr 识别库进行光学字符识别
                 ocr = ddddocr.DdddOcr(show_ad=False)
-                # 将图片塞进识别库，提取出里面的字母或数字
                 captcha_text = ocr.classification(img_bytes)
                 print(f">>> 🤖 ddddocr 识别出的验证码为: {captcha_text}")
             else:
@@ -222,14 +224,13 @@ def process_single_account(username, password):
             sb.type(CONFIG['password_selector'], password)
             sb.type(CONFIG['captcha_input_selector'], captcha_text)
 
-            # 【截图 3：点击登录前的状态（核对是否填错）】
+            # 【截图 3：点击登录前的状态】
             take_screenshot(sb, "3_已填写数据准备登录", username)
 
             print(">>> 点击登录！")
-            # 模拟鼠标点击登录按钮
             sb.click(CONFIG['login_btn_selector'])
 
-            # 稍微等待一会儿，让网站验证并跳转
+            # 等待网站验证跳转
             time.sleep(5)
             print(f"📄 登录后的页面标题是: {sb.get_title()}")
             
@@ -238,7 +239,7 @@ def process_single_account(username, password):
             print(f"✅ 账号 {username} 登录执行完毕！")
 
         except Exception as e:
-            # 如果中间任何一步报错了（比如元素没找到），就捕获错误并截图保留现场
+            # 捕获错误并截图保留现场
             print(f"❌ 账号 {username} 处理过程中出现错误: {e}")
             take_screenshot(sb, "Error_程序崩溃截图", username)
 
@@ -247,27 +248,21 @@ def process_single_account(username, password):
 # ==========================================
 def main():
     print("🚀 自动化任务启动...")
-    # 从操作系统的环境变量中获取账号信息（由 GitHub Actions 的 acount 变量传入）
     accounts_str = os.environ.get("acount")
     
     if not accounts_str:
         print("⚠️ 未获取到名为 'acount' 的环境变量，请检查 GitHub Secrets 配置！")
         return
 
-    # 将长长的字符串按照英文逗号劈开，变成一个账号列表
     account_list = accounts_str.split(',')
     print(f"📋 共检测到 {len(account_list)} 个账号需要处理。")
     
     for item in account_list:
-        # 去掉账号密码前后的空格，防止因为多余空格导致登录失败
         item = item.strip()
-        # 验证账号格式是否正确，必须包含英文冒号作为分隔符
         if ':' in item:
-            # 按照冒号切分，前面是账号，后面是密码
             parts = item.split(':', 1) 
             username = parts[0].strip()
             password = parts[1].strip()
-            # 拿到账号密码后，就丢给上面那个核心函数去跑流程
             process_single_account(username, password)
         else:
             print(f"⚠️ 账号格式不正确（缺少冒号），已跳过: {item}")
