@@ -151,7 +151,7 @@ def process_single_account(username, password):
         uc=True, 
         test=True, 
         locale="en", 
-        headless=True, 
+        xvfb=True, 
         proxy="socks5://127.0.0.1:10808", # 强行接管浏览器流量
         chromium_arg="--disable-blink-features=AutomationControlled,--window-size=1920,1080"
     ) as sb:
