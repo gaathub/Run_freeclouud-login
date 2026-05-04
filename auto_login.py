@@ -67,7 +67,7 @@ def is_cloudflare_interstitial(sb) -> bool:
     except:
         return False
 
-def bypass_cloudflare_interstitial(sb, max_attempts=3) -> bool:
+def bypass_cloudflare_interstitial(sb, max_attempts=4) -> bool:
     print("    🛡️ 检测到 CF 5秒盾，准备破除...")
     for attempt in range(max_attempts):
         print(f"      ▶ 尝试绕过 ({attempt+1}/{max_attempts})...")
