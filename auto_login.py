@@ -18,7 +18,7 @@ CONFIG = {
     "login_btn_selector": 'button[type="submit"]',
     
     # 签到页面的元素定位器
-    "sign_in_menu_selector": 'a[href*="_plugin=19"]',                
+    "sign_in_url": 'https://nat.freecloud.ltd/addons?_plugin=19&_controller=index&_action=index', # 🌟 新增：签到页面的直接网址
     "sign_in_btn_selector": 'button[onclick="showMathVerification()"]', 
     "math_question_selector": '#mathQuestion',                       
     "math_input_selector": '#userAnswer',                            
@@ -212,8 +212,9 @@ def process_single_account(username, password):
             # 🌟 每日签到与积分提取模块
             # ==========================================
             print("\n>>> 🎁 准备执行每日签到任务...")
-            sb.click(CONFIG['sign_in_menu_selector'])
-            time.sleep(3) 
+            # 🌟 修复：放弃点击菜单，改为直接强制跳转至签到网址
+            sb.open(CONFIG['sign_in_url'])
+            time.sleep(4) 
             
             balance_value = 0.0 
             
@@ -237,10 +238,12 @@ def process_single_account(username, password):
                 
                 sb.click(CONFIG['verify_btn_selector'])
                 
+                # 无论是"验证成功"还是"今天已经签到过了"，弹窗都是这个元素，一并抓取
                 sb.wait_for_element(CONFIG['popup_content_selector'], timeout=5)
                 popup_msg = sb.get_text(CONFIG['popup_content_selector'])
                 print(f"    🔔 签到系统提示: 【{popup_msg}】")
                 
+                # 点击关闭弹窗
                 sb.click(CONFIG['popup_confirm_btn_selector'])
                 time.sleep(2) 
                 
@@ -263,7 +266,7 @@ def process_single_account(username, password):
             # 🌟 积分判断与云服务器续费模块
             # ==========================================
             if balance_value >= 0.01:
-                print(f">>> 💻 积分达标 (当前 {balance_value})，开始执行云服务器续费任务...")
+                print(f">>> 💻 积分达标 (当前 {balance_value} >= 0.01)，开始执行云服务器续费任务...")
                 
                 print("    ▶ 正在强制跳转至云服务器列表网址...")
                 sb.open(CONFIG['server_list_url'])
@@ -271,29 +274,28 @@ def process_single_account(username, password):
                 take_screenshot(sb, "8_云服务器列表页", username)
                 
                 if sb.is_element_present(CONFIG['server_checkbox_selector']):
-                    # 1. 勾选第一台服务器（复选框直接点没问题）
+                    # 1. 勾选第一台服务器
                     sb.click(CONFIG['server_checkbox_selector'])
                     print("    ▶ 已勾选目标云服务器。")
                     
-                    # 2. 点击列表底部的【续费】
-                    # 🌟 修复：改用 js_click 强制触发网页底层代码
+                    # 2. 列表点击续费
                     sb.js_click(CONFIG['list_renew_btn_selector'])
-                    time.sleep(4) # 多等一秒让页面飞一会儿
+                    time.sleep(4) 
                     
                     print("    ▶ 正在生成续费订单...")
-                    # 3. 点击批量页面的【立即续费】
+                    # 3. 立即续费
                     sb.wait_for_element(CONFIG['confirm_renew_btn_selector'], timeout=10)
-                    sb.js_click(CONFIG['confirm_renew_btn_selector']) # 🌟 强制触发
+                    sb.js_click(CONFIG['confirm_renew_btn_selector']) 
                     time.sleep(5) 
                     
                     print("    ▶ 已调起支付面板，等待确认...")
-                    # 4. 点击收银台页面的【立即支付】
-                    sb.wait_for_element(CONFIG['order_pay_btn_selector'], timeout=10)
-                    sb.js_click(CONFIG['order_pay_btn_selector']) # 🌟 强制触发
+                    # 4. 收银台确认支付 (延长等待时间防网络卡顿)
+                    sb.wait_for_element(CONFIG['order_pay_btn_selector'], timeout=15)
+                    sb.js_click(CONFIG['order_pay_btn_selector']) 
                     
-                    # 5. 点击弹窗里最终确认的【立即支付】
-                    sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=5)
-                    sb.js_click(CONFIG['modal_pay_btn_selector']) # 🌟 强制触发
+                    # 5. 弹窗确认支付
+                    sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=10)
+                    sb.js_click(CONFIG['modal_pay_btn_selector']) 
                     print("    ▶ 💸 已在弹窗中确认支付，正在等待系统处理并跳转...")
                     
                     time.sleep(8) 
@@ -303,10 +305,28 @@ def process_single_account(username, password):
                         p_elements = sb.find_elements('section.text-gray p')
                         for p in p_elements:
                             if "到期时间" in p.text:
-                                print(f"    📅 续费成功！最新 {p.text}")
+                                print(f"    📅 续费大成功！最新 {p.text}")
                                 break
                     except Exception as e:
                         pass
+                    
+                    # ==========================================
+                    # 🌟 最终闭环：重返签到中心核对积分
+                    # ==========================================
+                    print("\n>>> 🔄 续费完成，返回签到中心查看最新积分...")
+                    sb.open(CONFIG['sign_in_url'])
+                    time.sleep(4)
+                    take_screenshot(sb, "13_续费后返回签到中心", username)
+                    
+                    try:
+                        final_balance_text = sb.get_text(CONFIG['points_balance_selector'])
+                        print(f"    💰 续费后账户最新信息: {final_balance_text}")
+                        match = re.search(r"(\d+(?:\.\d+)?)", final_balance_text)
+                        if match:
+                            print(f"    ✨ 最终剩余可用积分: {float(match.group(1))}")
+                    except Exception:
+                        print("    ⚠️ 无法获取最终积分余额。")
+                        
                 else:
                     print("    ⚠️ 当前账号下未检测到可续费的云服务器，已跳过。")
             else:
