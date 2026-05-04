@@ -73,10 +73,12 @@ jobs:
           echo ">>> 🔍 正在测试本地代理是否成功连通外网..."
           curl -x socks5://127.0.0.1:10808 -I https://www.google.com --connect-timeout 10 || echo "⚠️ 警告：代理连接测试失败，节点可能已失效或被封锁！"
           
-          # 🌟 安装 Xvfb 虚拟显示器，解决无头模式下无法模拟鼠标点击的问题
-          echo ">>> 📺 正在安装 Xvfb 虚拟显示环境..."
+          # 🌟 安装 Xvfb 虚拟显示器，以及中文字体
+          echo ">>> 📺 正在安装 Xvfb 虚拟显示环境和中文字体..."
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          
+          # 👈 新增：在安装 xvfb 的同时，安装 fonts-noto-cjk（谷歌开源的思源黑体/宋体，包含全面中文字符）
+          sudo apt-get install -y xvfb fonts-noto-cjk
           
           echo ">>> 🚀 开始执行自动登录 Python 脚本..."
           
