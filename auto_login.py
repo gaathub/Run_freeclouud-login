@@ -2,11 +2,12 @@ import time
 import os
 import base64
 import sys
+import re  # 🌟 新增：导入正则表达式模块，专门用来提取文字里的数字
 from seleniumbase import SB
 import ddddocr
 
 # ==========================================
-# 1. 网站配置区域 (新增了云服务器续费的各个按钮定位器)
+# 1. 网站配置区域
 # ==========================================
 CONFIG = {
     "target_url": "https://nat.freecloud.ltd/login",
@@ -26,19 +27,17 @@ CONFIG = {
     "popup_confirm_btn_selector": ".layui-layer-btn0", 
     "points_balance_selector": "div.alert-success span",
     
-    # 🌟 新增：云服务器续费流程的元素定位器
-    "server_menu_selector": 'a[href*="service?groupid=305"]', # 左侧菜单的“云服务器”
-    "server_checkbox_selector": '.row-checkbox',              # 服务器列表的勾选框
-    "list_renew_btn_selector": '#readBtn',                    # 列表底部的“续费”按钮
-    "confirm_renew_btn_selector": 'button.xfSubmit',          # 跳转后的“立即续费”按钮
-    "order_pay_btn_selector": '#payamount',                   # 订单页的“立即支付”按钮
-    "modal_pay_btn_selector": 'button.pay-now'                # 弹窗里的最终“立即支付”按钮
+    # 云服务器续费流程的元素定位器
+    "server_list_url": "https://nat.freecloud.ltd/service?groupid=305", # 🌟 新增：直接记录目标网址
+    "server_checkbox_selector": '.row-checkbox',              
+    "list_renew_btn_selector": '#readBtn',                    
+    "confirm_renew_btn_selector": 'button.xfSubmit',          
+    "order_pay_btn_selector": '#payamount',                   
+    "modal_pay_btn_selector": 'button.pay-now'                
 }
 
-# 提前创建一个文件夹，用来专门存放截图
 os.makedirs("screenshots", exist_ok=True)
 
-# 截图辅助函数
 def take_screenshot(sb, step_name, username="system"):
     safe_name = username.replace("@", "_").replace(".", "_")
     filepath = f"screenshots/{safe_name}_{step_name}.png"
@@ -49,7 +48,7 @@ def take_screenshot(sb, step_name, username="system"):
         print(f"    ⚠️ 截图失败 ({filepath}): {e}")
 
 # ==========================================
-# 2. Cloudflare 绕过辅助函数 (保持不变)
+# 2. Cloudflare 绕过辅助函数 
 # ==========================================
 def is_cloudflare_interstitial(sb) -> bool:
     try:
@@ -150,7 +149,7 @@ def handle_turnstile_verification(sb) -> bool:
     return verified
 
 # ==========================================
-# 3. 单个账号的处理流程（登录 -> 签到 -> 续费）
+# 3. 单个账号的处理流程
 # ==========================================
 def process_single_account(username, password):
     print(f"\n==========================================")
@@ -173,14 +172,12 @@ def process_single_account(username, password):
         
         take_screenshot(sb, "1_初始访问页面", username)
 
-        # 检测 1005 拦截
         page_source = sb.get_page_source()
         if "Error 1005" in page_source or "Access denied" in page_source:
-            print("🚨 致命错误：当前代理节点的 IP 被目标网站彻底封锁 (Error 1005)！")
+            print("🚨 致命错误：当前代理节点的 IP 被彻底封锁 (Error 1005)！")
             take_screenshot(sb, "Error_1005_节点被封锁", username)
             sys.exit(1)
 
-        # 过 5秒盾 和 Turnstile
         if is_cloudflare_interstitial(sb):
             if not bypass_cloudflare_interstitial(sb):
                 return 
@@ -192,40 +189,34 @@ def process_single_account(username, password):
 
         try:
             # --- 登录模块开始 ---
-            print(">>> 正在提取 Base64 验证码数据...")
             sb.wait_for_element(CONFIG['captcha_img_selector'], timeout=10)
             img_src = sb.get_attribute(CONFIG['captcha_img_selector'], "src")
             
             if "base64," in img_src:
                 base64_data = img_src.split(',')[1]
                 img_bytes = base64.b64decode(base64_data)
-                
                 ocr = ddddocr.DdddOcr(show_ad=False)
                 captcha_text = ocr.classification(img_bytes)
-                print(f">>> 🤖 ddddocr 识别出的验证码为: {captcha_text}")
             else:
-                print(">>> ⚠️ 错误：验证码格式不对，跳过。")
                 return
 
-            print(">>> 正在输入账号、密码和验证码...")
             sb.type(CONFIG['username_selector'], username)
             sb.type(CONFIG['password_selector'], password)
             sb.type(CONFIG['captcha_input_selector'], captcha_text)
             
-            take_screenshot(sb, "3_已填写数据准备登录", username)
             sb.click(CONFIG['login_btn_selector'])
-
             time.sleep(5)
             print(f"📄 登录成功，当前页面: {sb.get_title()}")
-            take_screenshot(sb, "4_登录后的结果页面", username)
-
 
             # ==========================================
-            # 🌟 每日签到模块
+            # 🌟 每日签到与积分提取模块
             # ==========================================
             print("\n>>> 🎁 准备执行每日签到任务...")
             sb.click(CONFIG['sign_in_menu_selector'])
             time.sleep(3) 
+            
+            # 初始化一个变量来保存提取到的数字积分
+            balance_value = 0.0 
             
             max_retries = 5
             for attempt in range(max_retries):
@@ -237,7 +228,6 @@ def process_single_account(username, password):
                 result = eval(math_expr)
                 
                 if isinstance(result, float) and not result.is_integer():
-                    print(f"    ⚠️ 遇到除不尽的题目 ({math_expr} = {result})，准备刷新...")
                     sb.refresh() 
                     time.sleep(3)
                     continue     
@@ -257,73 +247,68 @@ def process_single_account(username, password):
                 
                 try:
                     balance_text = sb.get_text(CONFIG['points_balance_selector'])
-                    print(f"    💰 当前账户: {balance_text}")
+                    print(f"    💰 当前账户原始信息: {balance_text}")
+                    
+                    # 🌟 核心逻辑：用正则提取小数或整数 (例如从"账户余额剩余 0.31 积分" 提取出 0.31)
+                    match = re.search(r"(\d+(?:\.\d+)?)", balance_text)
+                    if match:
+                        balance_value = float(match.group(1))
+                        print(f"    🔍 提取并转换可用积分为: {balance_value}")
                 except Exception:
-                    pass
+                    print("    ⚠️ 无法获取积分余额。")
 
-                print("    🎉 签到操作执行完毕！\n")
+                print("    🎉 签到流程结束。\n")
                 break 
             else:
                 print("    ❌ 签到失败：连续 5 次刷新都没有遇到可以整除的算术题。")
 
             # ==========================================
-            # 🌟 云服务器自动续费模块
+            # 🌟 积分判断与云服务器续费模块
             # ==========================================
-            print("\n>>> 💻 准备执行云服务器自动续费任务...")
-            
-            # 1. 点击左侧菜单，进入“云服务器”页面
-            print("    ▶ 正在进入云服务器列表...")
-            sb.click(CONFIG['server_menu_selector'])
-            time.sleep(3)
-            take_screenshot(sb, "8_云服务器列表页", username)
-            
-            # 检查页面上到底有没有服务器可以勾选（防止这是个没有服务器的新号报错）
-            if sb.is_element_present(CONFIG['server_checkbox_selector']):
+            # 只有提取出的数字积分大于等于 0.01，才会去执行续费
+            if balance_value >= 0.01:
+                print(f">>> 💻 积分达标 (当前 {balance_value} >= 0.01)，开始执行云服务器续费任务...")
                 
-                # 2. 勾选第一台服务器
-                sb.click(CONFIG['server_checkbox_selector'])
-                print("    ▶ 已勾选目标云服务器。")
+                # 🌟 修复关键点：抛弃在折叠菜单里点击，改为直接强制让浏览器输入网址跳转！最稳妥不报错。
+                print("    ▶ 正在强制跳转至云服务器列表网址...")
+                sb.open(CONFIG['server_list_url'])
+                time.sleep(4) # 等待列表页加载
+                take_screenshot(sb, "8_云服务器列表页", username)
                 
-                # 3. 点击列表下方的“续费”按钮
-                sb.click(CONFIG['list_renew_btn_selector'])
-                time.sleep(3) # 等待页面跳转到续费确认页
-                take_screenshot(sb, "9_续费确认页面", username)
-                
-                # 4. 点击“立即续费”按钮
-                print("    ▶ 正在生成续费订单...")
-                sb.click(CONFIG['confirm_renew_btn_selector'])
-                time.sleep(3) # 等待页面跳转到收银台支付页
-                take_screenshot(sb, "10_收银台支付页面", username)
-                
-                # 5. 点击收银台的“立即支付”（此时会弹出一个支付方式确认弹窗）
-                print("    ▶ 已调起支付面板，等待确认...")
-                sb.click(CONFIG['order_pay_btn_selector'])
-                
-                # 等待弹窗加载出来（最多等5秒），然后点击弹窗里的最后一次“立即支付”
-                sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=5)
-                take_screenshot(sb, "11_积分支付弹窗确认", username)
-                sb.click(CONFIG['modal_pay_btn_selector'])
-                print("    ▶ 💸 已在弹窗中确认支付，正在等待系统处理并跳转...")
-                
-                # 6. 等待网站处理订单并自动跳转回服务器详情页
-                # 网页里有 setInterval 一直在轮询订单状态，处理完会自动 location.href 跳转，所以我们多等一会儿
-                time.sleep(8) 
-                take_screenshot(sb, "12_支付完成跳转详情页", username)
-                
-                # 7. 在详情页中寻找包含“到期时间”的那行字，抓取出来让你放心
-                try:
-                    # 抓取页面里所有 <section class="text-gray"> 下面的 <p> 标签
-                    p_elements = sb.find_elements('section.text-gray p')
-                    for p in p_elements:
-                        if "到期时间" in p.text:
-                            print(f"    📅 续费大成功！最新 {p.text}")
-                            break
-                except Exception as e:
-                    print("    ⚠️ 未能抓取到最新的到期时间，但流程已正常走完。可以看截图确认。")
+                if sb.is_element_present(CONFIG['server_checkbox_selector']):
+                    sb.click(CONFIG['server_checkbox_selector'])
+                    print("    ▶ 已勾选目标云服务器。")
                     
+                    sb.click(CONFIG['list_renew_btn_selector'])
+                    time.sleep(3) 
+                    
+                    print("    ▶ 正在生成续费订单...")
+                    sb.click(CONFIG['confirm_renew_btn_selector'])
+                    time.sleep(3) 
+                    
+                    print("    ▶ 已调起支付面板，等待确认...")
+                    sb.click(CONFIG['order_pay_btn_selector'])
+                    
+                    sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=5)
+                    sb.click(CONFIG['modal_pay_btn_selector'])
+                    print("    ▶ 💸 已在弹窗中确认支付，正在等待系统处理并跳转...")
+                    
+                    time.sleep(8) 
+                    take_screenshot(sb, "12_支付完成跳转详情页", username)
+                    
+                    try:
+                        p_elements = sb.find_elements('section.text-gray p')
+                        for p in p_elements:
+                            if "到期时间" in p.text:
+                                print(f"    📅 续费大成功！最新 {p.text}")
+                                break
+                    except Exception as e:
+                        pass
+                else:
+                    print("    ⚠️ 当前账号下未检测到可续费的云服务器，已跳过。")
             else:
-                print("    ⚠️ 当前账号下未检测到云服务器，跳过续费流程。")
-
+                # 积分如果只有 0.00，执行这里并跳出，直接开始下一个账号
+                print(f">>> 🛑 积分不足 (当前 {balance_value} < 0.01)，安全退出当前账号的后续操作！")
 
         except Exception as e:
             print(f"    ❌ 账号处理或执行过程中出现错误: {e}")
@@ -351,7 +336,7 @@ def main():
             password = parts[1].strip()
             process_single_account(username, password)
         else:
-            print(f"⚠️ 账号格式不正确: {item}")
+            pass
             
     print("\n🏁 所有队列任务已全部执行完成！")
 
