@@ -2,7 +2,7 @@ import time
 import os
 import base64
 import sys
-import re  # 🌟 新增：导入正则表达式模块，专门用来提取文字里的数字
+import re  
 from seleniumbase import SB
 import ddddocr
 
@@ -28,10 +28,10 @@ CONFIG = {
     "points_balance_selector": "div.alert-success span",
     
     # 云服务器续费流程的元素定位器
-    "server_list_url": "https://nat.freecloud.ltd/service?groupid=305", # 🌟 新增：直接记录目标网址
+    "server_list_url": "https://nat.freecloud.ltd/service?groupid=305", 
     "server_checkbox_selector": '.row-checkbox',              
     "list_renew_btn_selector": '#readBtn',                    
-    "confirm_renew_btn_selector": 'button.xfSubmit',          
+    "confirm_renew_btn_selector": '.xfSubmit',          
     "order_pay_btn_selector": '#payamount',                   
     "modal_pay_btn_selector": 'button.pay-now'                
 }
@@ -188,7 +188,7 @@ def process_single_account(username, password):
         take_screenshot(sb, "2_准备填写表单", username)
 
         try:
-            # --- 登录模块开始 ---
+            # --- 登录模块 ---
             sb.wait_for_element(CONFIG['captcha_img_selector'], timeout=10)
             img_src = sb.get_attribute(CONFIG['captcha_img_selector'], "src")
             
@@ -215,7 +215,6 @@ def process_single_account(username, password):
             sb.click(CONFIG['sign_in_menu_selector'])
             time.sleep(3) 
             
-            # 初始化一个变量来保存提取到的数字积分
             balance_value = 0.0 
             
             max_retries = 5
@@ -248,8 +247,6 @@ def process_single_account(username, password):
                 try:
                     balance_text = sb.get_text(CONFIG['points_balance_selector'])
                     print(f"    💰 当前账户原始信息: {balance_text}")
-                    
-                    # 🌟 核心逻辑：用正则提取小数或整数 (例如从"账户余额剩余 0.31 积分" 提取出 0.31)
                     match = re.search(r"(\d+(?:\.\d+)?)", balance_text)
                     if match:
                         balance_value = float(match.group(1))
@@ -265,32 +262,38 @@ def process_single_account(username, password):
             # ==========================================
             # 🌟 积分判断与云服务器续费模块
             # ==========================================
-            # 只有提取出的数字积分大于等于 0.01，才会去执行续费
             if balance_value >= 0.01:
                 print(f">>> 💻 积分达标 (当前 {balance_value} >= 0.01)，开始执行云服务器续费任务...")
                 
-                # 🌟 修复关键点：抛弃在折叠菜单里点击，改为直接强制让浏览器输入网址跳转！最稳妥不报错。
                 print("    ▶ 正在强制跳转至云服务器列表网址...")
                 sb.open(CONFIG['server_list_url'])
-                time.sleep(4) # 等待列表页加载
+                time.sleep(4) 
                 take_screenshot(sb, "8_云服务器列表页", username)
                 
                 if sb.is_element_present(CONFIG['server_checkbox_selector']):
+                    # 1. 勾选第一台服务器（复选框直接点没问题）
                     sb.click(CONFIG['server_checkbox_selector'])
                     print("    ▶ 已勾选目标云服务器。")
                     
-                    sb.click(CONFIG['list_renew_btn_selector'])
-                    time.sleep(3) 
+                    # 2. 点击列表底部的【续费】
+                    # 🌟 修复：改用 js_click 强制触发网页底层代码
+                    sb.js_click(CONFIG['list_renew_btn_selector'])
+                    time.sleep(4) # 多等一秒让页面飞一会儿
                     
                     print("    ▶ 正在生成续费订单...")
-                    sb.click(CONFIG['confirm_renew_btn_selector'])
-                    time.sleep(3) 
+                    # 3. 点击批量页面的【立即续费】
+                    sb.wait_for_element(CONFIG['confirm_renew_btn_selector'], timeout=10)
+                    sb.js_click(CONFIG['confirm_renew_btn_selector']) # 🌟 强制触发
+                    time.sleep(5) 
                     
                     print("    ▶ 已调起支付面板，等待确认...")
-                    sb.click(CONFIG['order_pay_btn_selector'])
+                    # 4. 点击收银台页面的【立即支付】
+                    sb.wait_for_element(CONFIG['order_pay_btn_selector'], timeout=10)
+                    sb.js_click(CONFIG['order_pay_btn_selector']) # 🌟 强制触发
                     
+                    # 5. 点击弹窗里最终确认的【立即支付】
                     sb.wait_for_element(CONFIG['modal_pay_btn_selector'], timeout=5)
-                    sb.click(CONFIG['modal_pay_btn_selector'])
+                    sb.js_click(CONFIG['modal_pay_btn_selector']) # 🌟 强制触发
                     print("    ▶ 💸 已在弹窗中确认支付，正在等待系统处理并跳转...")
                     
                     time.sleep(8) 
@@ -307,7 +310,6 @@ def process_single_account(username, password):
                 else:
                     print("    ⚠️ 当前账号下未检测到可续费的云服务器，已跳过。")
             else:
-                # 积分如果只有 0.00，执行这里并跳出，直接开始下一个账号
                 print(f">>> 🛑 积分不足 (当前 {balance_value} < 0.01)，安全退出当前账号的后续操作！")
 
         except Exception as e:
