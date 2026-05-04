@@ -263,7 +263,7 @@ def process_single_account(username, password):
             # 🌟 积分判断与云服务器续费模块
             # ==========================================
             if balance_value >= 0.01:
-                print(f">>> 💻 积分达标 (当前 {balance_value} >= 0.01)，开始执行云服务器续费任务...")
+                print(f">>> 💻 积分达标 (当前 {balance_value})，开始执行云服务器续费任务...")
                 
                 print("    ▶ 正在强制跳转至云服务器列表网址...")
                 sb.open(CONFIG['server_list_url'])
@@ -303,7 +303,7 @@ def process_single_account(username, password):
                         p_elements = sb.find_elements('section.text-gray p')
                         for p in p_elements:
                             if "到期时间" in p.text:
-                                print(f"    📅 续费大成功！最新 {p.text}")
+                                print(f"    📅 续费成功！最新 {p.text}")
                                 break
                     except Exception as e:
                         pass
