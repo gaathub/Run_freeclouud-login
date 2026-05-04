@@ -25,8 +25,7 @@ jobs:
 
       - name: 🚀 智能解析节点并启动 Hysteria2
         env:
-          # 【修改点】：将读取的变量名正式更改为 proxy
-          # 它会读取你在 GitHub Secrets 中名为 PROXY 的变量
+          # 读取你在 GitHub Secrets 中配置的 PROXY 变量
           proxy: ${{ secrets.PROXY }}
         run: |
           echo ">>> 正在下载 Hysteria2 内核..."
@@ -34,7 +33,6 @@ jobs:
           chmod +x hysteria-linux-amd64
           
           echo ">>> 正在解析节点链接..."
-          # 【修改点】：使用新的变量名 $proxy 进行字符串切割
           # 提取完整链接中的密码、服务器地址和 SNI
           AUTH=$(echo "$proxy" | sed -n 's|.*://\([^@]*\)@.*|\1|p')
           SERVER=$(echo "$proxy" | sed -n 's|.*@\([^/?#]*\).*|\1|p')
@@ -69,11 +67,19 @@ jobs:
           acount: ${{ secrets.ACOUNT }}
           HTTP_PROXY: socks5://127.0.0.1:10808
           HTTPS_PROXY: socks5://127.0.0.1:10808
-          # 【核心修复】：将本地通信和浏览器驱动的下载加入白名单，不走代理
+          # 保证 GitHub 通信和本地通信不走代理
           NO_PROXY: localhost,127.0.0.1,::1,github.com,github.io,googlechromelabs.github.io,googleapis.com
-        run: python -u auto_login.py
+        run: |
+          echo ">>> 🔍 正在测试本地代理是否成功连通外网..."
           
-
+          # 🌟 代理连通性测试：使用 curl 命令通过本地 SOCKS5 代理请求 Google，如果 10 秒内连不上就会报错提示
+          curl -x socks5://127.0.0.1:10808 -I https://www.google.com --connect-timeout 10 || echo "⚠️ 警告：代理连接测试失败，节点可能已失效或被封锁！"
+          
+          echo ">>> 🚀 开始执行自动登录 Python 脚本..."
+          
+          # 🌟 加上 -u 参数执行 Python 脚本，确保终端可以实时无缓冲输出日志信息
+          python -u auto_login.py
+          
 
       - name: 上传运行过程截图
         uses: actions/upload-artifact@v4
