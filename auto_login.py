@@ -6,7 +6,7 @@ from seleniumbase import SB
 import ddddocr
 
 # ==========================================
-# 1. 网站配置区域
+# 1. 网站配置区域 (新增了签到相关的选择器)
 # ==========================================
 CONFIG = {
     "target_url": "https://nat.freecloud.ltd/login",
@@ -14,13 +14,20 @@ CONFIG = {
     "password_selector": "#emailPwdInp",          
     "captcha_img_selector": "#allow_login_email_captcha",          
     "captcha_input_selector": "#captcha_allow_login_email_captcha", 
-    "login_btn_selector": 'button[type="submit"]'                  
+    "login_btn_selector": 'button[type="submit"]',
+    
+    # 🌟 新增：签到页面的元素定位器
+    "sign_in_menu_selector": 'a[href*="_plugin=19"]',                # 左侧菜单的“签到中心”链接
+    "sign_in_btn_selector": 'button[onclick="showMathVerification()"]', # “我要签到”按钮
+    "math_question_selector": '#mathQuestion',                       # 算术题文本标签
+    "math_input_selector": '#userAnswer',                            # 答案输入框
+    "verify_btn_selector": 'button[onclick="checkAnswer()"]'         # “验证答案”按钮
 }
 
 # 提前创建一个文件夹，用来专门存放截图
 os.makedirs("screenshots", exist_ok=True)
 
-# 截图辅助函数：自动给图片加上账号名和步骤编号
+# 截图辅助函数
 def take_screenshot(sb, step_name, username="system"):
     safe_name = username.replace("@", "_").replace(".", "_")
     filepath = f"screenshots/{safe_name}_{step_name}.png"
@@ -31,10 +38,9 @@ def take_screenshot(sb, step_name, username="system"):
         print(f"    ⚠️ 截图失败 ({filepath}): {e}")
 
 # ==========================================
-# 2. Cloudflare 绕过辅助函数 
+# 2. Cloudflare 绕过辅助函数 (保持不变)
 # ==========================================
 def is_cloudflare_interstitial(sb) -> bool:
-    """检测当前页面是否处于 Cloudflare 5秒盾拦截状态"""
     try:
         page_source = sb.get_page_source()
         title = sb.get_title().lower() if sb.get_title() else ""
@@ -52,7 +58,6 @@ def is_cloudflare_interstitial(sb) -> bool:
         return False
 
 def bypass_cloudflare_interstitial(sb, max_attempts=3) -> bool:
-    """尝试通过点击绕过 Cloudflare 拦截"""
     print("    🛡️ 检测到 CF 5秒盾，准备破除...")
     for attempt in range(max_attempts):
         print(f"      ▶ 尝试绕过 ({attempt+1}/{max_attempts})...")
@@ -63,16 +68,14 @@ def bypass_cloudflare_interstitial(sb, max_attempts=3) -> bool:
                 print("      ✅ CF 5秒盾已通过！")
                 return True
         except Exception as e:
-            print(f"      ⚠️ 绕过异常: {e}")
+            pass
         time.sleep(3)
     return False
 
 def handle_turnstile_verification(sb) -> bool:
-    """处理页面内嵌的 Cloudflare Turnstile 人机验证控件"""
     try:
         cookie_btn = 'button[data-cky-tag="accept-button"]'
         if sb.is_element_visible(cookie_btn):
-            print("    🍪 清理 Cookie 弹窗干扰...")
             sb.click(cookie_btn)
             time.sleep(1)
     except:
@@ -106,7 +109,6 @@ def handle_turnstile_verification(sb) -> bool:
     verified = False
     
     for attempt in range(1, 4):
-        print(f"      ▶ 点击尝试 ({attempt}/3)...")
         try:
             sb.uc_gui_click_captcha()
         except:
@@ -125,7 +127,6 @@ def handle_turnstile_verification(sb) -> bool:
             break
 
     if not verified:
-        print("    ⏳ 等待验证码自动计算 (最多30秒)...")
         for _ in range(30):
             if sb.is_element_present('input[name="cf-turnstile-response"]'):
                 token = sb.get_attribute('input[name="cf-turnstile-response"]', 'value')
@@ -135,14 +136,10 @@ def handle_turnstile_verification(sb) -> bool:
                     break
             time.sleep(1)
 
-    if not verified:
-        print("    ❌ 验证失败，未获取有效 Token。")
-        return False
-        
-    return True
+    return verified
 
 # ==========================================
-# 3. 单个账号的处理流程（动态代理 + 虚拟屏幕适配）
+# 3. 单个账号的处理流程（包含登录 + 签到逻辑）
 # ==========================================
 def process_single_account(username, password):
     print(f"\n==========================================")
@@ -151,11 +148,6 @@ def process_single_account(username, password):
     
     env_proxy = os.environ.get("HTTP_PROXY")
     
-    if env_proxy:
-        print(f"🔌 检测到环境变量代理，已启用: {env_proxy}")
-    else:
-        print(f"🌐 未检测到代理环境变量，将使用直连模式。")
-
     with SB(
         uc=True,            
         test=True,          
@@ -168,38 +160,27 @@ def process_single_account(username, password):
         sb.uc_open_with_reconnect(CONFIG['target_url'], reconnect_time=8)
         time.sleep(4)
         
-        # 【截图 1：刚进入网页】
         take_screenshot(sb, "1_初始访问页面", username)
 
-        # ==========================================
-        # 🌟 检测是否遭遇 Error 1005 封锁
-        # ==========================================
+        # 检测 1005 拦截
         page_source = sb.get_page_source()
         if "Error 1005" in page_source or "Access denied" in page_source:
             print("🚨 致命错误：当前代理节点的 IP 被目标网站彻底封锁 (Error 1005)！")
             take_screenshot(sb, "Error_1005_节点被封锁", username)
-            print("🛑 节点已无法访问目标网站，继续尝试其他账号也没有意义。")
-            print("🔌 正在终止整个脚本运行，请去 GitHub Secrets 更换新的代理节点...")
-            sys.exit(1) # 立刻杀死当前 Python 程序，直接结束动作
+            sys.exit(1)
 
-        # 检查是否遇到 Cloudflare 5 秒盾拦截
+        # 过 5秒盾 和 Turnstile
         if is_cloudflare_interstitial(sb):
             if not bypass_cloudflare_interstitial(sb):
-                print(f"❌ 无法绕过 CF 整页拦截，跳过此账号。")
-                take_screenshot(sb, "Error_卡在CF盾", username)
                 return 
             time.sleep(3) 
             
-        print(f"🛡️ 检查并处理页面内的 Turnstile 验证码...")
         handle_turnstile_verification(sb)
-        
-        print("🎉 CF 验证已处理完毕，即将进入图片验证码环节。")
         time.sleep(3)
-        
-        # 【截图 2：完成CF验证，进入登录表单】
         take_screenshot(sb, "2_准备填写表单", username)
 
         try:
+            # --- 登录模块开始 ---
             print(">>> 正在提取 Base64 验证码数据...")
             sb.wait_for_element(CONFIG['captcha_img_selector'], timeout=10)
             img_src = sb.get_attribute(CONFIG['captcha_img_selector'], "src")
@@ -212,29 +193,81 @@ def process_single_account(username, password):
                 captcha_text = ocr.classification(img_bytes)
                 print(f">>> 🤖 ddddocr 识别出的验证码为: {captcha_text}")
             else:
-                print(">>> ⚠️ 错误：验证码图片的 src 不是 base64 格式，跳过此账号！")
+                print(">>> ⚠️ 错误：验证码格式不对，跳过。")
                 return
 
             print(">>> 正在输入账号、密码和验证码...")
             sb.type(CONFIG['username_selector'], username)
             sb.type(CONFIG['password_selector'], password)
             sb.type(CONFIG['captcha_input_selector'], captcha_text)
-
-            # 【截图 3：点击登录前的状态】
+            
             take_screenshot(sb, "3_已填写数据准备登录", username)
-
-            print(">>> 点击登录！")
             sb.click(CONFIG['login_btn_selector'])
 
             time.sleep(5)
-            print(f"📄 登录后的页面标题是: {sb.get_title()}")
-            
-            # 【截图 4：点击登录后的最终结果页面】
+            print(f"📄 登录成功，当前页面: {sb.get_title()}")
             take_screenshot(sb, "4_登录后的结果页面", username)
-            print(f"✅ 账号 {username} 登录执行完毕！")
+            # --- 登录模块结束 ---
+
+
+            # ==========================================
+            # 🌟 新增模块：每日签到与算术题处理
+            # ==========================================
+            print("\n>>> 🎁 准备执行每日签到任务...")
+            
+            # 1. 点击进入签到中心
+            print("    ▶ 正在进入签到中心...")
+            sb.click(CONFIG['sign_in_menu_selector'])
+            time.sleep(3) # 等待页面跳转加载
+            take_screenshot(sb, "5_进入签到中心", username)
+
+            # 设定最多重试 5 次，防止遇到死循环
+            max_retries = 5
+            for attempt in range(max_retries):
+                print(f"    ▶ 点击【我要签到】 (尝试 {attempt + 1}/{max_retries})...")
+                sb.click(CONFIG['sign_in_btn_selector'])
+                time.sleep(2) # 等待弹窗和题目显示
+                
+                # 2. 从网页上抓取题目文本，例如 "请计算：10 * 3"
+                question_text = sb.get_text(CONFIG['math_question_selector'])
+                print(f"    ❓ 提取到题目: {question_text}")
+                
+                # 3. 剥离中文，留下纯数字和符号："请计算：10 * 3" -> "10 * 3"
+                math_expr = question_text.replace("请计算：", "").replace("=", "").strip()
+                
+                # 4. 让 Python 帮我们算出结果。eval() 是一个很强大的内置函数，能直接执行字符串里的数学运算
+                result = eval(math_expr)
+                
+                # 5. 核心逻辑：判断是不是“除不尽”的小数
+                #    isinstance(result, float) 是看结果带不带小数点
+                #    not result.is_integer() 是看小数位是不是 0。例如 5.0 是整数，但 3.33 就不是。
+                if isinstance(result, float) and not result.is_integer():
+                    print(f"    ⚠️ 遇到除不尽的题目 ({math_expr} = {result})，准备刷新...")
+                    sb.refresh() # 刷新网页，重新再来一次循环
+                    time.sleep(3)
+                    continue     # 跳过下面的代码，直接进入下一次 attempt 循环
+                
+                # 6. 如果代码走到这里，说明是完美的整数，准备提交！
+                final_answer = int(result) 
+                print(f"    ✅ 计算结果为完美整数: {final_answer}，正在提交...")
+                
+                sb.type(CONFIG['math_input_selector'], str(final_answer))
+                take_screenshot(sb, f"6_填写签到算术题_尝试{attempt+1}", username)
+                
+                # 点击验证并提交答案
+                sb.click(CONFIG['verify_btn_selector'])
+                time.sleep(4) 
+                
+                take_screenshot(sb, "7_签到完成结果", username)
+                print("    🎉 签到操作执行完毕！\n")
+                break # 签到成功了，跳出循环！
+                
+            else:
+                # 如果 5 次循环跑完了都没 `break`，说明运气太差全是除不尽的
+                print("    ❌ 签到失败：连续 5 次刷新都没有遇到可以整除的算术题。")
 
         except Exception as e:
-            print(f"❌ 账号 {username} 处理过程中出现错误: {e}")
+            print(f"    ❌ 账号处理或签到过程中出现错误(可能今天已签到过): {e}")
             take_screenshot(sb, "Error_程序崩溃截图", username)
 
 # ==========================================
@@ -245,11 +278,11 @@ def main():
     accounts_str = os.environ.get("acount")
     
     if not accounts_str:
-        print("⚠️ 未获取到名为 'acount' 的环境变量，请检查 GitHub Secrets 配置！")
+        print("⚠️ 未获取到名为 'acount' 环境变量！")
         return
 
     account_list = accounts_str.split(',')
-    print(f"📋 共检测到 {len(account_list)} 个账号需要处理。")
+    print(f"📋 共检测到 {len(account_list)} 个账号。")
     
     for item in account_list:
         item = item.strip()
@@ -259,9 +292,9 @@ def main():
             password = parts[1].strip()
             process_single_account(username, password)
         else:
-            print(f"⚠️ 账号格式不正确（缺少冒号），已跳过: {item}")
+            print(f"⚠️ 账号格式不正确: {item}")
             
-    print("\n🏁 所有账号的队列任务已全部执行完成！")
+    print("\n🏁 所有队列任务已全部执行完成！")
 
 if __name__ == "__main__":
     main()
