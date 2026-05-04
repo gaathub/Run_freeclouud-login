@@ -21,7 +21,7 @@ jobs:
 
       - name: 安装 Python 依赖包
         run: |
-          pip install seleniumbase ddddocr
+          pip install seleniumbase ddddocr PyAutoGUI
 
       - name: 🚀 智能解析节点并启动 Hysteria2
         env:
@@ -62,7 +62,7 @@ jobs:
           # 打印一下启动日志，方便你在 GitHub Actions 面板查看是否连接成功
           cat hy2.log
 
-      - name: 运行自动化脚本 (全局接管网络)
+      - name: 运行自动化脚本 (全局接管网络 + 虚拟屏幕)
         env:
           acount: ${{ secrets.ACOUNT }}
           HTTP_PROXY: socks5://127.0.0.1:10808
@@ -71,15 +71,18 @@ jobs:
           NO_PROXY: localhost,127.0.0.1,::1,github.com,github.io,googlechromelabs.github.io,googleapis.com
         run: |
           echo ">>> 🔍 正在测试本地代理是否成功连通外网..."
-          
-          # 🌟 代理连通性测试：使用 curl 命令通过本地 SOCKS5 代理请求 Google，如果 10 秒内连不上就会报错提示
           curl -x socks5://127.0.0.1:10808 -I https://www.google.com --connect-timeout 10 || echo "⚠️ 警告：代理连接测试失败，节点可能已失效或被封锁！"
+          
+          # 🌟 安装 Xvfb 虚拟显示器，解决无头模式下无法模拟鼠标点击的问题
+          echo ">>> 📺 正在安装 Xvfb 虚拟显示环境..."
+          sudo apt-get update
+          sudo apt-get install -y xvfb
           
           echo ">>> 🚀 开始执行自动登录 Python 脚本..."
           
-          # 🌟 加上 -u 参数执行 Python 脚本，确保终端可以实时无缓冲输出日志信息
-          python -u auto_login.py
-          
+          # 🌟 使用 xvfb-run 创建一个 1920x1080 的虚拟屏幕来运行 Python 脚本
+          # -u 参数保证 Python 实时输出日志，不被缓存阻塞
+          xvfb-run --server-args="-screen 0 1920x1080x24" python -u auto_login.py
 
       - name: 上传运行过程截图
         uses: actions/upload-artifact@v4
