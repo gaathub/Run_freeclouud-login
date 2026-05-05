@@ -14,73 +14,33 @@
 - 🔄 **多账号支持** - 支持批量处理多个账号
 - 🌐 **代理支持** - 支持通过环境变量配置 HTTP 代理
 
-## 技术栈
+## 快速开始
 
-- **Python 3.7+**
-- **SeleniumBase** - 浏览器自动化框架
-- **ddddocr** - 验证码识别
-- **Chrome/Chromium** - 浏览器引擎
+### 1. Fork 本仓库
 
-## 安装
+点击右上角的 **Fork** 按钮，将仓库复制到你的账户
 
-### 1. 克隆仓库
+### 2. 配置 GitHub Actions Secrets
 
-```bash
-git clone https://github.com/kystor/freeclouud-login.git
-cd freeclouud-login
-```
+在 Fork 后的仓库中：
+1. 进入 **Settings** → **Secrets and variables** → **Actions**
+2. 点击 **New repository secret**
+3. 添加以下 Secret：
 
-### 2. 安装依赖
+| Secret 名称 | 说明 | 示例 |
+|-------------|------|------|
+| `ACCOUNT` | Freeclouud 账户信息 | `user@example.com:password` |
+| `HTTP_PROXY` | HTTP 代理（可选） | `http://proxy:8080` |
 
-```bash
-pip install -r requirements.txt
-```
+**账户格式：**
+- 单个账户：`email@example.com:password`
+- 多个账户：`email1@example.com:password1,email2@example.com:password2`
 
-如果没有 requirements.txt，请手动安装：
+### 3. 启用 GitHub Actions
 
-```bash
-pip install seleniumbase ddddocr
-```
-
-### 3. 初始化 SeleniumBase
-
-```bash
-seleniumbase install chromedriver
-```
-
-## 使用方法
-
-### 基础用法
-
-通过环境变量传入账户信息运行脚本：
-
-```bash
-export acount="user1@example.com:password1,user2@example.com:password2"
-python auto_login.py
-```
-
-### 支持代理
-
-如需使用代理，设置 `HTTP_PROXY` 环境变量：
-
-```bash
-export HTTP_PROXY="http://proxy-server:port"
-export acount="user@example.com:password"
-python auto_login.py
-```
-
-### 账户格式
-
-环境变量 `acount` 的格式为：
-- **单个账户**：`email@example.com:password`
-- **多个账户**：`email1@example.com:password1,email2@example.com:password2`
-
-**示例：**
-
-```bash
-export acount="test1@mail.com:pass123,test2@mail.com:pass456"
-python auto_login.py
-```
+1. 进入仓库的 **Actions** 标签页
+2. 启用 Workflows（如果提示）
+3. 脚本将按照计划自动运行
 
 ## 工作流程
 
@@ -134,57 +94,32 @@ python auto_login.py
 
 ## 截图输出
 
-脚本会在 `screenshots/` 目录下自动保存每个步骤的截图，文件命名格式：
-
-```
-screenshots/{username}_{step_name}.png
-```
-
-**示例：**
-```
-screenshots/test_email_com_1_初始访问页面.png
-screenshots/test_email_com_2_准备填写表单.png
-screenshots/test_email_com_8_云服务器列表页.png
-```
-
-这些截图可用于：
-- 🐛 调试问题
-- ✅ 验证执行结果
-- 📋 操作记录备份
+脚本会在 GitHub Actions 中自动保存每个步骤的截图。运行日志可在 **Actions** 标签页查看。
 
 ## 常见问题
 
-### Q: 脚本卡在 Cloudflare 验证？
+### Q: 脚本多久运行一次？
 
-**A:** 这是正常的。脚本会自动检测并尝试绕过 CF 5秒盾，最多重试 4 次。若多次失败可能是：
-- 代理 IP 被封禁（提示 `Error 1005`）
-- 网络连接问题
+**A:** 根据 Workflow 配置，通常每天在指定时间自动运行。可在 `.github/workflows/` 中的配置文件修改计划。
 
-### Q: 验证码识别失败？
+### Q: 验证码识别失败怎么办？
 
-**A:** `ddddocr` 的识别率约 90%。如识别失败，脚本会捕获截图供调试，可检查 `screenshots/` 目录下的验证码图片。
+**A:** `ddddocr` 的识别率约 90%。脚本会保存截图便于调试，可检查 GitHub Actions 日志。
 
-### Q: 如何修改网站配置？
+### Q: 如何修改脚本配置？
 
 **A:** 编辑 `auto_login.py` 中的 `CONFIG` 字典。使用浏览器开发者工具（F12）检查网页元素，获取正确的 CSS 选择器。
 
-### Q: 支持 Python 2 吗？
+### Q: 如何更新账户信息？
 
-**A:** 不支持，需要 **Python 3.7+**。
+**A:** 进入仓库的 **Settings** → **Secrets and variables** → **Actions**，编辑对应的 Secret 即可。
 
-### Q: 脚本如何处理账户密码安全？
+### Q: 脚本如何处理密码安全？
 
 **A:** 
-- ⚠️ **不要**在代码中硬编码密码
-- 使用环境变量传入敏感信息
-- 在 CI/CD 中使用 Secrets 管理
-
-## 环境变量参考
-
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `acount` | 账户列表（必需） | `user@mail.com:pass123` |
-| `HTTP_PROXY` | HTTP代理地址（可选） | `http://proxy:8080` |
+- 密码存储在 GitHub Secrets 中，加密保护
+- 不会在日志中显示敏感信息
+- 仅在运行时从环境变量读取
 
 ## 日志输出示例
 
@@ -196,7 +131,6 @@ screenshots/test_email_com_8_云服务器列表页.png
 ➡️ 开始处理账号: user1@example.com
 ==========================================
 🌐 正在访问目标网站: https://nat.freecloud.ltd/login
-📸 已截图保存: screenshots/user1_example_com_1_初始访问页面.png
 🛡️ 检测到 CF 5秒盾，准备破除...
 ✅ CF 5秒盾已通过！
 📄 登录成功，当前页面: FreeCloud - Dashboard
@@ -205,38 +139,16 @@ screenshots/test_email_com_8_云服务器列表页.png
 ✅ 计算结果为整数: 42，正在提交...
 🔔 签到系统提示: 【今天已经签到过了】
 💰 当前账户原始信息: 可用积分: 5.26
-🔍 提取并转换可用积分为: 5.26
 
 🏁 所有队列任务已全部执行完成！
 ```
 
-## 故障排查
+## 技术栈
 
-### 1. 导入错误
-
-```
-ModuleNotFoundError: No module named 'seleniumbase'
-```
-
-**解决：** 运行 `pip install seleniumbase ddddocr`
-
-### 2. 浏览器无法启动
-
-```
-Error: ChromeDriver not found
-```
-
-**解决：** 运行 `seleniumbase install chromedriver`
-
-### 3. 验证码无法识别
-
-脚本会在 `screenshots/` 中保存验证码图片，可手动检查识别效果。
-
-### 4. 账户无法登录
-
-- 检查用户名和密码是否正确
-- 查看 `screenshots/` 中的登录页面截图
-- 确认账户未被锁定或限制
+- **Python 3.7+**
+- **SeleniumBase** - 浏览器自动化框架
+- **ddddocr** - 验证码识别
+- **GitHub Actions** - 自动化执行环境
 
 ## 声明
 
