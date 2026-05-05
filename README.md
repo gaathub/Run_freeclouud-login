@@ -83,14 +83,14 @@
 
 | 配置项 | 说明 | 示例 |
 |--------|------|------|
-| `target_url` | 登录页面URL | `https://nat.freecloud.ltd/login` |
+| `target_url` | 登录页面URL | `https://run.freecloud.ltd/login` |
 | `username_selector` | 用户名输入框选择器 | `#emailInp` |
 | `password_selector` | 密码输入框选择器 | `#emailPwdInp` |
 | `captcha_img_selector` | 验证码图片选择器 | `#allow_login_email_captcha` |
 | `captcha_input_selector` | 验证码输入框选择器 | `#captcha_allow_login_email_captcha` |
 | `login_btn_selector` | 登录按钮选择器 | `button[type="submit"]` |
-| `sign_in_url` | 签到页面URL | `https://nat.freecloud.ltd/addons...` |
-| `server_list_url` | 云服务器列表URL | `https://nat.freecloud.ltd/service?groupid=305` |
+| `sign_in_url` | 签到页面URL | `https://run.freecloud.ltd/addons...` |
+| `server_list_url` | 云服务器列表URL | `https://run.freecloud.ltd/service?groupid=305` |
 
 ## 截图输出
 
@@ -130,7 +130,7 @@
 ==========================================
 ➡️ 开始处理账号: user1@example.com
 ==========================================
-🌐 正在访问目标网站: https://nat.freecloud.ltd/login
+🌐 正在访问目标网站: https://run.freecloud.ltd/login
 🛡️ 检测到 CF 5秒盾，准备破除...
 ✅ CF 5秒盾已通过！
 📄 登录成功，当前页面: FreeCloud - Dashboard
@@ -154,7 +154,7 @@
 
 ⚠️ **仅供学习和研究使用**
 
-此脚本仅用于个人账户的自动化操作。使用本脚本需遵守 [Freeclouud](https://nat.freecloud.ltd/clientarea) 服务条款。
+此脚本仅用于个人账户的自动化操作。使用本脚本需遵守 [Freeclouud](https://run.freecloud.ltd/clientarea) 服务条款。
 
 用户对脚本的使用承担全部责任。开发者不对任何损失负责。
 
