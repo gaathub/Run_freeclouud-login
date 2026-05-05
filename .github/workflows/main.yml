@@ -1,0 +1,73 @@
+name: 多账号自动登录续期任务
+
+on:
+  schedule:
+    # 每天 UTC 时间 00:00 运行（对应北京时间早上 8:00）
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 允许你在 GitHub 网页上手动点击按钮运行测试
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest # 使用最新的 Ubuntu Linux 系统作为后台服务器
+
+    steps:
+      - name: 获取代码仓库
+        uses: actions/checkout@v3
+
+      - name: 配置 Python 环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 安装 Python 依赖包
+        run: |
+          pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
+
+      - name: 🚀 智能解析节点并启动 Hysteria2
+        env:
+          proxy: ${{ secrets.PROXY }}
+        run: |
+          wget -q https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64
+          chmod +x hysteria-linux-amd64
+          
+          AUTH=$(echo "$proxy" | sed -n 's|.*://\([^@]*\)@.*|\1|p')
+          SERVER=$(echo "$proxy" | sed -n 's|.*@\([^/?#]*\).*|\1|p')
+          SNI=$(echo "$proxy" | grep -oP 'sni=\K[^&#]*')
+          
+          cat <<EOF> hy2-config.yaml
+server: $SERVER
+auth: $AUTH
+tls:
+  sni: $SNI
+  insecure: true
+socks5:
+  listen: 127.0.0.1:10808
+EOF
+          
+          nohup ./hysteria-linux-amd64 client -c hy2-config.yaml > hy2.log 2>&1 &
+          sleep 5  
+
+      - name: 运行自动化脚本 (全局接管网络 + 虚拟屏幕)
+        env:
+          acount: ${{ secrets.ACOUNT }}
+        run: |
+          # 测试代理连通性，如果失败则立刻终止
+          curl -x socks5://127.0.0.1:10808 -I https://www.baidu.com --connect-timeout 10 >> init_env.log 2>&1 || { echo "❌ 代理连接失败，立刻终止任务！"; exit 1; }
+          
+          sudo apt-get update >> init_env.log 2>&1
+          sudo apt-get install -y xvfb fonts-noto-cjk >> init_env.log 2>&1
+          
+          echo ">>> 🚀 开始执行自动登录 Python 脚本..."
+          # 强制指定底层浏览器走 10808 代理端口
+          xvfb-run --server-args="-screen 0 1920x1080x24" python -u auto_login.py --proxy="socks5://127.0.0.1:10808"
+
+      - name: 上传运行过程截图与日志文件
+        uses: actions/upload-artifact@v4
+        if: always() 
+        with:
+          name: Auto-Login-Results
+          path: |
+            screenshots/
+            init_env.log
+            hy2.log
+          retention-days: 7
