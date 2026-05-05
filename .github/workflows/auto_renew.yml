@@ -2,13 +2,12 @@ name: 多账号自动登录续期任务
 
 on:
   schedule:
-    # 每天 UTC 时间 00:00 运行（对应北京时间早上 8:00）
     - cron: '0 0 * * *'
-  workflow_dispatch: # 允许你在 GitHub 网页上手动点击按钮运行测试
+  workflow_dispatch:
 
 jobs:
   run-script:
-    runs-on: ubuntu-latest # 使用最新的 Ubuntu Linux 系统作为后台服务器
+    runs-on: ubuntu-latest
 
     steps:
       - name: 获取代码仓库
@@ -27,7 +26,6 @@ jobs:
         env:
           proxy: ${{ secrets.PROXY }}
         run: |
-          # 后台运行 Hysteria2 并将日志写入 hy2.log，这里不会产生乱糟糟的输出
           wget -q https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64
           chmod +x hysteria-linux-amd64
           
@@ -35,7 +33,6 @@ jobs:
           SERVER=$(echo "$proxy" | sed -n 's|.*@\([^/?#]*\).*|\1|p')
           SNI=$(echo "$proxy" | grep -oP 'sni=\K[^&#]*')
           
-          # 【修复1：使用 echo 逐行写入，彻底解决 YAML 格式罢工报错的问题】
           echo "server: $SERVER" > hy2-config.yaml
           echo "auth: $AUTH" >> hy2-config.yaml
           echo "tls:" >> hy2-config.yaml
@@ -50,23 +47,22 @@ jobs:
       - name: 运行自动化脚本 (全局接管网络 + 虚拟屏幕)
         env:
           acount: ${{ secrets.ACOUNT }}
-          # 【修复2：加回 HTTP_PROXY 环境变量，确保你的 Python 脚本能认出代理，不再“裸奔”被封 1005】
           HTTP_PROXY: socks5://127.0.0.1:10808
+          HTTPS_PROXY: socks5://127.0.0.1:10808
+          # 【最关键的修复：加回本地白名单！让 Python 和 Chrome 的内部通信不走代理，防止 Host unreachable 报错】
+          NO_PROXY: localhost,127.0.0.1,::1
         run: |
-          # 【修复3：国内节点无法测通 google，换成测 baidu，如果连不上代理就直接阻断任务】
           curl -x socks5://127.0.0.1:10808 -I https://www.baidu.com --connect-timeout 10 >> init_env.log 2>&1 || { echo "❌ 代理连接失败，立刻终止任务！"; exit 1; }
           
-          # 安装环境：把 apt-get 长长的下载进度条全部静默，写进日志文件
           sudo apt-get update >> init_env.log 2>&1
           sudo apt-get install -y xvfb fonts-noto-cjk >> init_env.log 2>&1
           
           echo ">>> 🚀 开始执行自动登录 Python 脚本..."
-          # 还原你原本的运行命令
           xvfb-run --server-args="-screen 0 1920x1080x24" python -u auto_login.py
 
       - name: 上传运行过程截图与日志文件
         uses: actions/upload-artifact@v4
-        if: always() # 无论成功还是报错都执行
+        if: always()
         with:
           name: Auto-Login-Results
           path: |
