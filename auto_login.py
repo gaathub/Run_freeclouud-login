@@ -10,7 +10,7 @@ import ddddocr
 # 1. 网站配置区域
 # ==========================================
 CONFIG = {
-    "target_url": "https://nat.freecloud.ltd/login",
+    "target_url": "https://run.freecloud.ltd/login",
     "username_selector": "#emailInp",             
     "password_selector": "#emailPwdInp",          
     "captcha_img_selector": "#allow_login_email_captcha",          
@@ -18,7 +18,7 @@ CONFIG = {
     "login_btn_selector": 'button[type="submit"]',
     
     # 签到页面的元素定位器
-    "sign_in_url": 'https://nat.freecloud.ltd/addons?_plugin=19&_controller=index&_action=index', # 🌟 新增：签到页面的直接网址
+    "sign_in_url": 'https://run.freecloud.ltd/addons?_plugin=5&_controller=index&_action=index', # 🌟 新增：签到页面的直接网址
     "sign_in_btn_selector": 'button[onclick="showMathVerification()"]', 
     "math_question_selector": '#mathQuestion',                       
     "math_input_selector": '#userAnswer',                            
@@ -28,7 +28,7 @@ CONFIG = {
     "points_balance_selector": "div.alert-success span",
     
     # 云服务器续费流程的元素定位器
-    "server_list_url": "https://nat.freecloud.ltd/service?groupid=305", 
+    "server_list_url": "https://run.freecloud.ltd/service?groupid=305",
     "server_checkbox_selector": '.row-checkbox',              
     "list_renew_btn_selector": '#readBtn',                    
     "confirm_renew_btn_selector": '.xfSubmit',          
