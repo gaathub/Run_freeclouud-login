@@ -29,8 +29,8 @@
 
 | Secret 名称 | 说明 | 示例 |
 |-------------|------|------|
-| `ACCOUNT` | Freeclouud 账户信息 | `user@example.com:password` |
-| `HTTP_PROXY` | HTTP 代理（可选） | `http://proxy:8080` |
+| `ACOUNT` | Freeclouud 账户信息 | `user@example.com:password` |
+| `PROXY` | hy2节点代理 | `hy2://proxy:8080` |
 
 **账户格式：**
 - 单个账户：`email@example.com:password`
