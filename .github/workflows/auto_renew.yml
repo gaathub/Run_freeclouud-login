@@ -47,7 +47,6 @@ jobs:
                   secret = decoded_str
                   print("✅ 成功检测并解码 Base64 密钥！")
           except Exception:
-              # 如果解码报错，说明用户传的本来就是明文，直接继续
               pass
           
           # 去除可能存在的 BOM 头 (针对 Windows 记事本)
@@ -67,7 +66,8 @@ jobs:
                   
                   print(">>> 正在下载 Xray-core 内核...")
                   subprocess.run(["wget", "-q", "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip", "-O", "xray.zip"], check=True)
-                  subprocess.run(["unzip", "-q", "xray.zip"], check=True)
+                  # 🌟 修复冲突：添加了 -o 参数，强制覆盖同名的 README.md 文件
+                  subprocess.run(["unzip", "-q", "-o", "xray.zip"], check=True)
                   subprocess.run(["chmod", "+x", "xray"], check=True)
                   
                   print(">>> 启动 Xray 代理客户端...")
