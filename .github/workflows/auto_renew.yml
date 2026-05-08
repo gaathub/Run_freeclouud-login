@@ -22,39 +22,112 @@ jobs:
         run: |
           pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
 
-      - name: 🚀 智能解析节点并启动 Hysteria2
+      - name: 🚀 智能解析节点并启动代理核心 (全协议兼容引擎)
         env:
-          proxy: ${{ secrets.PROXY }}
+          PROXY_SECRET: ${{ secrets.PROXY }}
         run: |
-          echo ">>> 正在下载 Hysteria2 客户端..."
-          wget https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 || { echo "❌ 下载失败！"; exit 1; }
-          chmod +x hysteria-linux-amd64
+          python3 - << 'EOF'
+          import os, sys, urllib.parse, json, subprocess, time
           
-          echo ">>> 正在解析 PROXY 节点链接..."
-          # 【修复：加上 || true 防止因为链接里少参数而导致脚本 1 秒闪退】
-          AUTH=$(echo "$proxy" | sed -n 's|.*://\([^@]*\)@.*|\1|p' || true)
-          SERVER=$(echo "$proxy" | sed -n 's|.*@\([^/?#]*\).*|\1|p' || true)
-          SNI=$(echo "$proxy" | grep -oP 'sni=\K[^&#]*' || true)
+          secret = os.environ.get('PROXY_SECRET', '').strip()
+          if not secret:
+              print("❌ 严重错误：未获取到 PROXY 密钥！")
+              sys.exit(1)
+              
+          print("=======================================================")
+          print("🕵️‍♂️ 开始执行智能节点识别...")
           
-          # 检查是不是根本没填密钥
-          if [ -z "$SERVER" ]; then
-            echo "❌ 严重错误：提取不到服务器地址！"
-            echo "👉 请立刻去 GitHub 仓库的 Settings -> Secrets and variables -> Actions 中，检查是否漏填了 PROXY 密钥！"
-            exit 1
-          fi
+          # ==========================================
+          # 模式 1: 识别到 JSON (支持 VLESS/VMess/Trojan/Reality 等所有 v2rayN 导出配置)
+          # ==========================================
+          if secret.startswith('{'):
+              print("✅ 识别结果: Xray/v2ray JSON 完整配置")
+              try:
+                  json.loads(secret) # 校验 JSON 格式
+                  with open('config.json', 'w', encoding='utf-8') as f:
+                      f.write(secret)
+                  
+                  print(">>> 正在下载 Xray-core 内核...")
+                  subprocess.run(["wget", "-q", "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip", "-O", "xray.zip"], check=True)
+                  subprocess.run(["unzip", "-q", "xray.zip"], check=True)
+                  subprocess.run(["chmod", "+x", "xray"], check=True)
+                  
+                  print(">>> 启动 Xray 代理客户端...")
+                  # 后台运行 Xray
+                  subprocess.Popen(["./xray", "-c", "config.json"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
+              except Exception as e:
+                  print(f"❌ JSON 解析或 Xray 启动失败: {e}")
+                  sys.exit(1)
+                  
+          # ==========================================
+          # 模式 2: 识别到 Hysteria2 单行链接
+          # ==========================================
+          elif secret.startswith('hysteria2://'):
+              print("✅ 识别结果: Hysteria2 单行链接")
+              try:
+                  parsed = urllib.parse.urlparse(secret)
+                  server = parsed.hostname
+                  port = parsed.port
+                  auth = parsed.username
+                  qs = urllib.parse.parse_qs(parsed.query)
+                  sni = qs.get('sni', [''])[0]
+                  insecure = qs.get('insecure', ['1'])[0]
+                  
+                  yaml_str = f"""
+                  server: {server}:{port}
+                  auth: {auth}
+                  tls:
+                    sni: {sni}
+                    insecure: {'true' if insecure in ['1', 'true', 'True'] else 'false'}
+                  socks5:
+                    listen: 127.0.0.1:10808
+                  """
+                  with open('hy2-config.yaml', 'w') as f: 
+                      f.write(yaml_str.strip())
+                      
+                  print(">>> 正在下载 Hysteria2 内核...")
+                  subprocess.run(["wget", "-q", "https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64", "-O", "hysteria"], check=True)
+                  subprocess.run(["chmod", "+x", "hysteria"], check=True)
+                  
+                  print(">>> 启动 Hysteria2 代理客户端...")
+                  # 后台运行 Hysteria2
+                  subprocess.Popen(["./hysteria", "client", "-c", "hy2-config.yaml"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
+              except Exception as e:
+                  print(f"❌ Hysteria2 链接解析失败: {e}")
+                  sys.exit(1)
+                  
+          # ==========================================
+          # 拦截模式: 不受支持的残缺单行链接
+          # ==========================================
+          elif secret.startswith('vless://') or secret.startswith('vmess://') or secret.startswith('trojan://'):
+              print("❌ 错误：检测到 VLESS/VMess/Trojan 单行链接。")
+              print("💡 致命缺陷：单行链接只包含服务器参数，缺乏本地路由、SOCKS5 端口和底层传输（如 Reality/WS）的完整定义，在 Linux 无界面环境下极易崩溃。")
+              print("🎯 终极解决方案：")
+              print("   1. 打开你电脑上的 v2rayN。")
+              print("   2. 选中这个能正常上网的节点，右键点击它。")
+              print("   3. 选择【导出所选服务器为客户端配置】。")
+              print("   4. 打开导出的 JSON 文件，全选复制，然后粘贴到 GitHub 的 PROXY 密钥中！")
+              sys.exit(1)
+              
+          else:
+              print("❌ 无法识别的节点格式！请确保填入的是 Hysteria2 链接 或 v2ray 导出的 JSON。")
+              sys.exit(1)
           
-          echo "✅ 解析成功！正在生成配置文件..."
-          echo "server: $SERVER" > hy2-config.yaml
-          echo "auth: $AUTH" >> hy2-config.yaml
-          echo "tls:" >> hy2-config.yaml
-          echo "  sni: $SNI" >> hy2-config.yaml
-          echo "  insecure: true" >> hy2-config.yaml
-          echo "socks5:" >> hy2-config.yaml
-          echo "  listen: 127.0.0.1:10808" >> hy2-config.yaml
+          print("=======================================================")
+          EOF
           
-          echo ">>> 启动代理客户端..."
-          nohup ./hysteria-linux-amd64 client -c hy2-config.yaml > hy2.log 2>&1 &
+          echo ">>> 等待代理引擎初始化 (5秒)..."
           sleep 5
+          
+          echo ">>> 正在测试本地 SOCKS5 端口连通性 (127.0.0.1:10808)..."
+          curl -x socks5://127.0.0.1:10808 -I https://www.baidu.com --connect-timeout 10 || { 
+            echo "❌ 代理连接失败！为您提取代理内核报错日志："; 
+            echo "================ 内核日志开始 ================";
+            cat proxy_engine.log; 
+            echo "================ 内核日志结束 ================";
+            exit 1; 
+          }
+          echo "✅ 全局 SOCKS5 代理通道建立成功，可以开始自动化任务！"
 
       - name: 运行自动化脚本 (全局接管网络 + 虚拟屏幕)
         env:
@@ -63,14 +136,6 @@ jobs:
           HTTPS_PROXY: socks5://127.0.0.1:10808
           NO_PROXY: localhost,127.0.0.1,::1
         run: |
-          curl -x socks5://127.0.0.1:10808 -I https://www.baidu.com --connect-timeout 10 >> init_env.log 2>&1 || { 
-            echo "❌ 代理连接失败！为您提取底层日志："; 
-            echo "================ Hysteria2 运行日志 ================";
-            cat hy2.log;
-            echo "====================================================";
-            exit 1; 
-          }
-          
           sudo apt-get update >> init_env.log 2>&1
           sudo apt-get install -y xvfb fonts-noto-cjk >> init_env.log 2>&1
           
@@ -85,5 +150,5 @@ jobs:
           path: |
             screenshots/
             init_env.log
-            hy2.log
+            proxy_engine.log
           retention-days: 7
