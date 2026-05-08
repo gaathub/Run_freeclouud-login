@@ -59,9 +59,9 @@ jobs:
       - name: 运行自动化脚本 (全局接管网络 + 虚拟屏幕)
         env:
           acount: ${{ secrets.ACOUNT }}
-          # HTTP_PROXY: socks5://127.0.0.1:10808
-          # HTTPS_PROXY: socks5://127.0.0.1:10808
-          # NO_PROXY: localhost,127.0.0.1,::1
+          HTTP_PROXY: socks5://127.0.0.1:10808
+          HTTPS_PROXY: socks5://127.0.0.1:10808
+          NO_PROXY: localhost,127.0.0.1,::1
         run: |
           curl -x socks5://127.0.0.1:10808 -I https://www.baidu.com --connect-timeout 10 >> init_env.log 2>&1 || { 
             echo "❌ 代理连接失败！为您提取底层日志："; 
