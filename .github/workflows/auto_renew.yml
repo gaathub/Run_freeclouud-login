@@ -22,12 +22,12 @@ jobs:
         run: |
           pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
 
-      - name: 🚀 智能解析节点并启动代理核心 (全协议兼容引擎)
+      - name: 🚀 智能解析节点并启动代理核心 (全协议 + Base64 支持)
         env:
           PROXY_SECRET: ${{ secrets.PROXY }}
         run: |
           python3 - << 'EOF'
-          import os, sys, urllib.parse, json, subprocess, time
+          import os, sys, urllib.parse, json, subprocess, time, base64
           
           secret = os.environ.get('PROXY_SECRET', '').strip()
           if not secret:
@@ -37,13 +37,31 @@ jobs:
           print("=======================================================")
           print("🕵️‍♂️ 开始执行智能节点识别...")
           
+          # === 🌟 核心升级：尝试 Base64 解码 ===
+          try:
+              # 尝试将其作为 Base64 解码
+              decoded_bytes = base64.b64decode(secret)
+              decoded_str = decoded_bytes.decode('utf-8').strip()
+              # 如果解码后是 JSON 或 Hysteria 链接，说明用户传的是 Base64
+              if decoded_str.startswith('{') or decoded_str.startswith('hysteria2://'):
+                  secret = decoded_str
+                  print("✅ 成功检测并解码 Base64 密钥！")
+          except Exception:
+              # 如果解码报错，说明用户传的本来就是明文，直接继续
+              pass
+          
+          # 去除可能存在的 BOM 头 (针对 Windows 记事本)
+          if secret.startswith('\ufeff'):
+              secret = secret[1:]
+          
           # ==========================================
-          # 模式 1: 识别到 JSON (支持 VLESS/VMess/Trojan/Reality 等所有 v2rayN 导出配置)
+          # 模式 1: 识别到 JSON (支持 Xray/v2ray 完整配置)
           # ==========================================
           if secret.startswith('{'):
               print("✅ 识别结果: Xray/v2ray JSON 完整配置")
               try:
-                  json.loads(secret) # 校验 JSON 格式
+                  # 校验 JSON 格式是否正确
+                  json.loads(secret) 
                   with open('config.json', 'w', encoding='utf-8') as f:
                       f.write(secret)
                   
@@ -53,7 +71,6 @@ jobs:
                   subprocess.run(["chmod", "+x", "xray"], check=True)
                   
                   print(">>> 启动 Xray 代理客户端...")
-                  # 后台运行 Xray
                   subprocess.Popen(["./xray", "-c", "config.json"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
               except Exception as e:
                   print(f"❌ JSON 解析或 Xray 启动失败: {e}")
@@ -90,27 +107,20 @@ jobs:
                   subprocess.run(["chmod", "+x", "hysteria"], check=True)
                   
                   print(">>> 启动 Hysteria2 代理客户端...")
-                  # 后台运行 Hysteria2
                   subprocess.Popen(["./hysteria", "client", "-c", "hy2-config.yaml"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
               except Exception as e:
                   print(f"❌ Hysteria2 链接解析失败: {e}")
                   sys.exit(1)
                   
           # ==========================================
-          # 拦截模式: 不受支持的残缺单行链接
+          # 拦截模式: 残缺的单行链接
           # ==========================================
           elif secret.startswith('vless://') or secret.startswith('vmess://') or secret.startswith('trojan://'):
-              print("❌ 错误：检测到 VLESS/VMess/Trojan 单行链接。")
-              print("💡 致命缺陷：单行链接只包含服务器参数，缺乏本地路由、SOCKS5 端口和底层传输（如 Reality/WS）的完整定义，在 Linux 无界面环境下极易崩溃。")
-              print("🎯 终极解决方案：")
-              print("   1. 打开你电脑上的 v2rayN。")
-              print("   2. 选中这个能正常上网的节点，右键点击它。")
-              print("   3. 选择【导出所选服务器为客户端配置】。")
-              print("   4. 打开导出的 JSON 文件，全选复制，然后粘贴到 GitHub 的 PROXY 密钥中！")
+              print("❌ 错误：检测到 VLESS/VMess/Trojan 单行链接，缺少底层路由配置，Linux 无法直接运行。")
               sys.exit(1)
               
           else:
-              print("❌ 无法识别的节点格式！请确保填入的是 Hysteria2 链接 或 v2ray 导出的 JSON。")
+              print("❌ 无法识别的节点格式！")
               sys.exit(1)
           
           print("=======================================================")
