@@ -22,7 +22,7 @@ jobs:
         run: |
           pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
 
-      - name: 🚀 智能解析节点并启动代理核心 (全协议 + Base64 支持 + JSON清洗)
+      - name: 🚀 智能解析节点并启动代理核心 (终极稳定版)
         env:
           PROXY_SECRET: ${{ secrets.PROXY }}
         run: |
@@ -56,18 +56,27 @@ jobs:
           if secret.startswith('{'):
               print("✅ 识别结果: Xray/v2ray JSON 完整配置")
               try:
-                  # 校验 JSON 格式
                   config_dict = json.loads(secret) 
                   
-                  # 🌟 核心修复：剔除 v2rayN 专属的复杂 DNS 和 路由规则，防止 Xray 内核崩溃
-                  if 'dns' in config_dict:
-                      del config_dict['dns']
-                      print("   - 已自动剔除冲突的 DNS 模块")
-                  if 'routing' in config_dict:
-                      del config_dict['routing']
-                      print("   - 已自动剔除冲突的 Routing 模块")
+                  # 🌟 终极修复 1：强行覆盖本地入站规则 (Inbounds)
+                  # 不管 v2rayN 导出的入站规则多烂，全部替换为标准 10808 端口
+                  config_dict['inbounds'] = [{
+                      "listen": "127.0.0.1",
+                      "port": 10808,
+                      "protocol": "socks",
+                      "settings": {
+                          "auth": "noauth",
+                          "udp": True
+                      }
+                  }]
+                  print("   - 已强行重置本地 SOCKS5 监听端口为 127.0.0.1:10808")
+                  
+                  # 🌟 终极修复 2：剔除冲突的 DNS 和 路由规则
+                  config_dict.pop('dns', None)
+                  config_dict.pop('routing', None)
+                  print("   - 已自动清理冲突的 DNS 和 Routing 模块")
                       
-                  # 将净化后的配置写入文件
+                  # 将净化后的完美配置写入文件
                   with open('config.json', 'w', encoding='utf-8') as f:
                       json.dump(config_dict, f, indent=2)
                   
