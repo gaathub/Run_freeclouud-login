@@ -22,116 +22,105 @@ jobs:
         run: |
           pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
 
-      - name: 🚀 智能解析节点并启动代理核心 (终极稳定版)
+      - name: 🚀 智能解析节点并启动代理核心 (VLESS 链接直连版)
         env:
           PROXY_SECRET: ${{ secrets.PROXY }}
         run: |
           python3 - << 'EOF'
-          import os, sys, urllib.parse, json, subprocess, time, base64
+          import os, sys, urllib.parse, json, subprocess
           
+          # 提取第一行，防止误填入多行订阅链接
           secret = os.environ.get('PROXY_SECRET', '').strip()
           if not secret:
               print("❌ 严重错误：未获取到 PROXY 密钥！")
               sys.exit(1)
+          secret = secret.splitlines()[0].strip()
               
           print("=======================================================")
-          print("🕵️‍♂️ 开始执行智能节点识别...")
+          print("🕵️‍♂️ 开始执行 vless:// 终极解析引擎...")
           
-          # === 🌟 核心升级：尝试 Base64 解码 ===
-          try:
-              decoded_bytes = base64.b64decode(secret)
-              decoded_str = decoded_bytes.decode('utf-8').strip()
-              if decoded_str.startswith('{') or decoded_str.startswith('hysteria2://'):
-                  secret = decoded_str
-                  print("✅ 成功检测并解码 Base64 密钥！")
-          except Exception:
-              pass
+          # 预设最纯净的本地监听环境 (抛弃 v2rayN 乱七八糟的设置)
+          config_dict = {
+              "log": {"loglevel": "warning"},
+              "inbounds": [{
+                  "listen": "127.0.0.1",
+                  "port": 10808,
+                  "protocol": "socks",
+                  "settings": {"auth": "noauth", "udp": True}
+              }],
+              "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+          }
           
-          if secret.startswith('\ufeff'):
-              secret = secret[1:]
+          if secret.startswith('vless://'):
+              print("✅ 检测到 VLESS 单行链接，正在生成纯净配置...")
+              parsed = urllib.parse.urlparse(secret)
+              qs = urllib.parse.parse_qs(parsed.query)
+              
+              network = qs.get('type', ['tcp'])[0]
+              security = qs.get('security', ['none'])[0]
+              if security == '': security = 'none'
+              
+              outbound = {
+                  "protocol": "vless",
+                  "settings": {
+                      "vnext": [{
+                          "address": parsed.hostname,
+                          "port": int(parsed.port),
+                          "users": [{"id": parsed.username, "encryption": qs.get('encryption', ['none'])[0]}]
+                      }]
+                  },
+                  "streamSettings": {
+                      "network": network,
+                      "security": security
+                  }
+              }
+              
+              # 处理 TLS 与 Reality 等高级加密
+              if security == 'tls':
+                  outbound['streamSettings']['tlsSettings'] = {
+                      "sni": qs.get('sni', [parsed.hostname])[0],
+                      "fingerprint": qs.get('fp', ['chrome'])[0]
+                  }
+                  if 'alpn' in qs:
+                      outbound['streamSettings']['tlsSettings']['alpn'] = qs['alpn'][0].split(',')
+              elif security == 'reality':
+                  outbound['streamSettings']['realitySettings'] = {
+                      "serverName": qs.get('sni', [parsed.hostname])[0],
+                      "publicKey": qs.get('pbk', [''])[0],
+                      "shortId": qs.get('sid', [''])[0],
+                      "fingerprint": qs.get('fp', ['chrome'])[0],
+                      "spiderX": qs.get('spx', ['/'])[0]
+                  }
+                  
+              # 处理 WebSocket 与 GRPC 传输协议
+              if network == 'ws':
+                  outbound['streamSettings']['wsSettings'] = {
+                      "path": qs.get('path', ['/'])[0],
+                      "headers": {"Host": qs.get('host', [parsed.hostname])[0]}
+                  }
+              elif network == 'grpc':
+                  outbound['streamSettings']['grpcSettings'] = {
+                      "serviceName": qs.get('serviceName', [''])[0],
+                      "multiMode": qs.get('mode', ['multi'])[0] == 'multi'
+                  }
+                  
+              config_dict['outbounds'].insert(0, outbound)
           
-          # ==========================================
-          # 模式 1: 识别到 JSON (支持 Xray/v2ray 完整配置)
-          # ==========================================
-          if secret.startswith('{'):
-              print("✅ 识别结果: Xray/v2ray JSON 完整配置")
-              try:
-                  config_dict = json.loads(secret) 
-                  
-                  # 🌟 终极修复 1：强行覆盖本地入站规则 (Inbounds)
-                  # 不管 v2rayN 导出的入站规则多烂，全部替换为标准 10808 端口
-                  config_dict['inbounds'] = [{
-                      "listen": "127.0.0.1",
-                      "port": 10808,
-                      "protocol": "socks",
-                      "settings": {
-                          "auth": "noauth",
-                          "udp": True
-                      }
-                  }]
-                  print("   - 已强行重置本地 SOCKS5 监听端口为 127.0.0.1:10808")
-                  
-                  # 🌟 终极修复 2：剔除冲突的 DNS 和 路由规则
-                  config_dict.pop('dns', None)
-                  config_dict.pop('routing', None)
-                  print("   - 已自动清理冲突的 DNS 和 Routing 模块")
-                      
-                  # 将净化后的完美配置写入文件
-                  with open('config.json', 'w', encoding='utf-8') as f:
-                      json.dump(config_dict, f, indent=2)
-                  
-                  print(">>> 正在下载 Xray-core 内核...")
-                  subprocess.run(["wget", "-q", "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip", "-O", "xray.zip"], check=True)
-                  subprocess.run(["unzip", "-q", "-o", "xray.zip"], check=True)
-                  subprocess.run(["chmod", "+x", "xray"], check=True)
-                  
-                  print(">>> 启动 Xray 代理客户端...")
-                  subprocess.Popen(["./xray", "-c", "config.json"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
-              except Exception as e:
-                  print(f"❌ JSON 解析或 Xray 启动失败: {e}")
-                  sys.exit(1)
-                  
-          # ==========================================
-          # 模式 2: 识别到 Hysteria2 单行链接
-          # ==========================================
-          elif secret.startswith('hysteria2://'):
-              print("✅ 识别结果: Hysteria2 单行链接")
-              try:
-                  parsed = urllib.parse.urlparse(secret)
-                  server = parsed.hostname
-                  port = parsed.port
-                  auth = parsed.username
-                  qs = urllib.parse.parse_qs(parsed.query)
-                  sni = qs.get('sni', [''])[0]
-                  insecure = qs.get('insecure', ['1'])[0]
-                  
-                  yaml_str = f"""
-                  server: {server}:{port}
-                  auth: {auth}
-                  tls:
-                    sni: {sni}
-                    insecure: {'true' if insecure in ['1', 'true', 'True'] else 'false'}
-                  socks5:
-                    listen: 127.0.0.1:10808
-                  """
-                  with open('hy2-config.yaml', 'w') as f: 
-                      f.write(yaml_str.strip())
-                      
-                  print(">>> 正在下载 Hysteria2 内核...")
-                  subprocess.run(["wget", "-q", "https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64", "-O", "hysteria"], check=True)
-                  subprocess.run(["chmod", "+x", "hysteria"], check=True)
-                  
-                  print(">>> 启动 Hysteria2 代理客户端...")
-                  subprocess.Popen(["./hysteria", "client", "-c", "hy2-config.yaml"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
-              except Exception as e:
-                  print(f"❌ Hysteria2 链接解析失败: {e}")
-                  sys.exit(1)
-                  
           else:
-              print("❌ 无法识别的节点格式！")
+              print("❌ 无法识别！请确保你在 GitHub Secrets 填入的是以 vless:// 开头的单行链接！")
               sys.exit(1)
           
-          print("=======================================================")
+          # 写入完美的 JSON 文件
+          with open('config.json', 'w', encoding='utf-8') as f:
+              json.dump(config_dict, f, indent=2)
+          
+          print(">>> 正在下载 Xray-core 内核...")
+          subprocess.run(["wget", "-q", "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip", "-O", "xray.zip"], check=True)
+          subprocess.run(["unzip", "-q", "-o", "xray.zip"], check=True)
+          subprocess.run(["chmod", "+x", "xray"], check=True)
+          
+          print(">>> 启动 Xray 代理客户端...")
+          subprocess.Popen(["./xray", "-c", "config.json"], stdout=open('proxy_engine.log', 'w'), stderr=subprocess.STDOUT)
           EOF
           
           echo ">>> 等待代理引擎初始化 (5秒)..."
