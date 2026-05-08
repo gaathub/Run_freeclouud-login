@@ -22,7 +22,7 @@ jobs:
         run: |
           pip install seleniumbase ddddocr PyAutoGUI > init_env.log 2>&1
 
-      - name: 🚀 智能解析节点并启动代理核心 (全协议 + Base64 支持)
+      - name: 🚀 智能解析节点并启动代理核心 (全协议 + Base64 支持 + JSON清洗)
         env:
           PROXY_SECRET: ${{ secrets.PROXY }}
         run: |
@@ -39,17 +39,14 @@ jobs:
           
           # === 🌟 核心升级：尝试 Base64 解码 ===
           try:
-              # 尝试将其作为 Base64 解码
               decoded_bytes = base64.b64decode(secret)
               decoded_str = decoded_bytes.decode('utf-8').strip()
-              # 如果解码后是 JSON 或 Hysteria 链接，说明用户传的是 Base64
               if decoded_str.startswith('{') or decoded_str.startswith('hysteria2://'):
                   secret = decoded_str
                   print("✅ 成功检测并解码 Base64 密钥！")
           except Exception:
               pass
           
-          # 去除可能存在的 BOM 头 (针对 Windows 记事本)
           if secret.startswith('\ufeff'):
               secret = secret[1:]
           
@@ -59,14 +56,23 @@ jobs:
           if secret.startswith('{'):
               print("✅ 识别结果: Xray/v2ray JSON 完整配置")
               try:
-                  # 校验 JSON 格式是否正确
-                  json.loads(secret) 
+                  # 校验 JSON 格式
+                  config_dict = json.loads(secret) 
+                  
+                  # 🌟 核心修复：剔除 v2rayN 专属的复杂 DNS 和 路由规则，防止 Xray 内核崩溃
+                  if 'dns' in config_dict:
+                      del config_dict['dns']
+                      print("   - 已自动剔除冲突的 DNS 模块")
+                  if 'routing' in config_dict:
+                      del config_dict['routing']
+                      print("   - 已自动剔除冲突的 Routing 模块")
+                      
+                  # 将净化后的配置写入文件
                   with open('config.json', 'w', encoding='utf-8') as f:
-                      f.write(secret)
+                      json.dump(config_dict, f, indent=2)
                   
                   print(">>> 正在下载 Xray-core 内核...")
                   subprocess.run(["wget", "-q", "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip", "-O", "xray.zip"], check=True)
-                  # 🌟 修复冲突：添加了 -o 参数，强制覆盖同名的 README.md 文件
                   subprocess.run(["unzip", "-q", "-o", "xray.zip"], check=True)
                   subprocess.run(["chmod", "+x", "xray"], check=True)
                   
@@ -112,13 +118,6 @@ jobs:
                   print(f"❌ Hysteria2 链接解析失败: {e}")
                   sys.exit(1)
                   
-          # ==========================================
-          # 拦截模式: 残缺的单行链接
-          # ==========================================
-          elif secret.startswith('vless://') or secret.startswith('vmess://') or secret.startswith('trojan://'):
-              print("❌ 错误：检测到 VLESS/VMess/Trojan 单行链接，缺少底层路由配置，Linux 无法直接运行。")
-              sys.exit(1)
-              
           else:
               print("❌ 无法识别的节点格式！")
               sys.exit(1)
